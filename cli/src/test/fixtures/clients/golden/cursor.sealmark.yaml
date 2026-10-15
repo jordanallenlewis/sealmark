@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=./node_modules/sealmark/schema/sealmark.schema.json
+# sealmark.yaml
+# Run:  sealmark run     Inspect:  sealmark config show --effective --origins
+# note (fs): contains an absolute path of this machine; replace it with {sandbox} or a path that exists for your team
+# note (tools): contains an absolute path of this machine; replace it with {sandbox} or a path that exists for your team
+# note (remote): values moved to sealmark.local.yaml and replaced here by ${...} references: url
+
+schema_version: 1
+servers:
+  fs:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - C:/Users/tester/work/demo
+  tools:
+    command: node
+    args:
+      - C:/Users/tester/mcp/server.js
+    env:
+      API_TOKEN: ${TOOLS_TOKEN}
+      LOG: info
+  remote:
+    url: https://remote.example.test/mcp?api_key=${SEALMARK_REMOTE_URL_API_KEY}&team=a

@@ -1,0 +1,128 @@
+name: 'Sealmark'
+description: 'Behavioral conformance tests for an MCP server: grade it, upload the SARIF to code scanning, keep the reports.'
+
+# Not published. Usage, inputs and what was not verified: action/README.md.
+
+inputs:
+  version:
+    description: 'Sealmark version to run through npx. The default is the version this action was written against; it must be on npm.'
+    required: false
+    default: '0.2.2'
+  start:
+    description: 'Command line that starts the server over stdio (the same as --start). With url it is started and reached over HTTP.'
+    required: false
+  url:
+    description: 'URL of a Streamable HTTP server (the same as --url).'
+    required: false
+  config:
+    description: 'Path to a sealmark.yaml (the same as --config). Optional when start or url is set.'
+    required: false
+  pack:
+    description: 'Packs to run, comma separated, for example core,fs (the same as repeating --pack). Empty runs the default packs.'
+    required: false
+  fail-under:
+    description: 'Lowest letter that passes, A to F, or none (the same as --fail-under). Empty keeps the CLI default.'
+    required: false
+  soft-fail:
+    description: 'true prints a warning for a grade below the gate and keeps the job green (the same as --soft-fail).'
+    required: false
+    default: 'false'
+  baseline:
+    description: 'Earlier JSON report to compare with (the same as --baseline).'
+    required: false
+  write-baseline:
+    description: 'Write the JSON report here for the next run to use as its baseline (the same as --write-baseline).'
+    required: false
+  fail-on:
+    description: 'With a baseline, what decides the exit code, comma separated: any, regressions, drift (the same as --fail-on).'
+    required: false
+  bearer-env:
+    description: 'The NAME of an environment variable that holds a bearer token for url, for example MCP_TOKEN. Never the token itself.'
+    required: false
+  args:
+    description: 'Extra Sealmark flags, split on whitespace with simple "double" and ''single'' quotes. Never run through a shell.'
+    required: false
+  report-dir:
+    description: 'Directory for the summary, JSON, JUnit and SARIF files, relative to working-directory.'
+    required: false
+    default: 'sealmark-report'
+  upload-sarif:
+    description: 'true uploads the SARIF file to code scanning. Needs security-events: write, and GitHub Code Security on a private repository.'
+    required: false
+    default: 'true'
+  artifact:
+    description: 'true keeps the report directory as a workflow artifact named sealmark-report.'
+    required: false
+    default: 'true'
+  node-version:
+    description: 'Node version for actions/setup-node (Sealmark needs 22.13 or newer).'
+    required: false
+    default: '24'
+  working-directory:
+    description: 'Directory to run in.'
+    required: false
+    default: '.'
+
+outputs:
+  exit-code:
+    description: 'The exit code of sealmark run. The step fails with it.'
+    value: ${{ steps.run.outputs.exit-code }}
+  report-dir:
+    description: 'Absolute path of the report directory.'
+    value: ${{ steps.run.outputs.report-dir }}
+  json:
+    description: 'Absolute path of the JSON report; empty when it was not written.'
+    value: ${{ steps.run.outputs.json }}
+  sarif:
+    description: 'Absolute path of the SARIF report; empty when it was not written.'
+    value: ${{ steps.run.outputs.sarif }}
+  junit:
+    description: 'Absolute path of the JUnit report; empty when it was not written.'
+    value: ${{ steps.run.outputs.junit }}
+  summary:
+    description: 'One line with each graded pack and its letter, for example core A · db B.'
+    value: ${{ steps.run.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # Composite actions do not populate INPUT_* variables, so every input is mapped by hand.
+      env:
+        SEALMARK_INPUT_VERSION: ${{ inputs.version }}
+        SEALMARK_INPUT_START: ${{ inputs.start }}
+        SEALMARK_INPUT_URL: ${{ inputs.url }}
+        SEALMARK_INPUT_CONFIG: ${{ inputs.config }}
+        SEALMARK_INPUT_PACK: ${{ inputs.pack }}
+        SEALMARK_INPUT_FAIL_UNDER: ${{ inputs.fail-under }}
+        SEALMARK_INPUT_SOFT_FAIL: ${{ inputs.soft-fail }}
+        SEALMARK_INPUT_BASELINE: ${{ inputs.baseline }}
+        SEALMARK_INPUT_WRITE_BASELINE: ${{ inputs.write-baseline }}
+        SEALMARK_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        SEALMARK_INPUT_BEARER_ENV: ${{ inputs.bearer-env }}
+        SEALMARK_INPUT_ARGS: ${{ inputs.args }}
+        SEALMARK_INPUT_REPORT_DIR: ${{ inputs.report-dir }}
+        SEALMARK_INPUT_UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        SEALMARK_INPUT_ARTIFACT: ${{ inputs.artifact }}
+        SEALMARK_INPUT_NODE_VERSION: ${{ inputs.node-version }}
+        SEALMARK_INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: node "${{ github.action_path }}/run.mjs"
+
+    # pin to a commit SHA before relying on this; no network was available to resolve one when this was written
+    - uses: github/codeql-action/upload-sarif@v3
+      if: always() && inputs.upload-sarif == 'true' && steps.run.outputs.sarif != ''
+      with:
+        sarif_file: ${{ steps.run.outputs.sarif }}
+
+    # pin to a commit SHA before relying on this; no network was available to resolve one when this was written
+    - uses: actions/upload-artifact@v4
+      if: always() && inputs.artifact == 'true'
+      with:
+        name: sealmark-report
+        path: ${{ inputs.working-directory }}/${{ inputs.report-dir }}

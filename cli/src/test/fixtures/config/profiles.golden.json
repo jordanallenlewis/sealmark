@@ -1,0 +1,185 @@
+{
+  "standard": {
+    "standard": true,
+    "diff": [],
+    "reasons": []
+  },
+  "quick": {
+    "standard": false,
+    "diff": [
+      {
+        "path": "packs",
+        "standard": [
+          "core",
+          "db",
+          "sqlite",
+          "fs",
+          "net",
+          "git",
+          "http",
+          "effects"
+        ],
+        "profile": [
+          "core",
+          "fs",
+          "net",
+          "http"
+        ]
+      },
+      {
+        "path": "timeout_probe_sec",
+        "standard": 10,
+        "profile": 3
+      },
+      {
+        "path": "checks.db-rowcap.enabled",
+        "standard": true,
+        "profile": false
+      },
+      {
+        "path": "checks.db-timeout.enabled",
+        "standard": true,
+        "profile": false
+      },
+      {
+        "path": "checks.fs-size-cap.enabled",
+        "standard": true,
+        "profile": false
+      }
+    ],
+    "reasons": [
+      "timeout_probe_sec",
+      "checks.db-rowcap.enabled",
+      "checks.db-timeout.enabled",
+      "checks.fs-size-cap.enabled",
+      "packs",
+      "profile"
+    ]
+  },
+  "ci": {
+    "standard": true,
+    "diff": [
+      {
+        "path": "output.formats",
+        "standard": [],
+        "profile": [
+          "summary",
+          "junit",
+          "json"
+        ]
+      },
+      {
+        "path": "output.exit_policy.treat_inconclusive_as",
+        "standard": "pass",
+        "profile": "fail"
+      }
+    ],
+    "reasons": []
+  },
+  "strict": {
+    "standard": false,
+    "diff": [
+      {
+        "path": "checks.write-gate.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.audit.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.db-privilege.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.exec-allowlist.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.http-bind.severity",
+        "standard": null,
+        "profile": "scored"
+      }
+    ],
+    "reasons": [
+      "checks.write-gate.severity",
+      "checks.audit.severity",
+      "checks.exec-allowlist.severity",
+      "checks.http-bind.severity",
+      "checks.db-privilege.severity",
+      "profile"
+    ]
+  },
+  "paranoid": {
+    "standard": false,
+    "diff": [
+      {
+        "path": "packs",
+        "standard": [
+          "core",
+          "db",
+          "sqlite",
+          "fs",
+          "net",
+          "git",
+          "http",
+          "effects"
+        ],
+        "profile": [
+          "core",
+          "db",
+          "sqlite",
+          "fs",
+          "net",
+          "git",
+          "http",
+          "effects",
+          "exec"
+        ]
+      },
+      {
+        "path": "checks.write-gate.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.audit.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.db-privilege.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.exec-allowlist.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "checks.http-bind.severity",
+        "standard": null,
+        "profile": "scored"
+      },
+      {
+        "path": "net.allow_dns",
+        "standard": false,
+        "profile": true
+      }
+    ],
+    "reasons": [
+      "checks.write-gate.severity",
+      "checks.audit.severity",
+      "checks.exec-allowlist.severity",
+      "checks.http-bind.severity",
+      "net.allow_dns",
+      "checks.db-privilege.severity",
+      "profile"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+# quick: a 2-minute local loop. Fewer packs, no cap/timeout probes, short waits.
+# Always CUSTOM (not the published methodology): it drops standard packs and checks.
+extends: standard
+description: 2-minute local loop. Drops the slow packs and the cap and timeout probes. Always CUSTOM.
+packs: [core, fs, net, http]
+timeout_probe_sec: 3
+checks:
+  db-rowcap: { enabled: false }
+  db-timeout: { enabled: false }
+  fs-size-cap: { enabled: false }

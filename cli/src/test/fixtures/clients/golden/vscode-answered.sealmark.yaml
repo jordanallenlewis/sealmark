@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=./node_modules/sealmark/schema/sealmark.schema.json
+# sealmark.yaml
+# Run:  sealmark run     Inspect:  sealmark config show --effective --origins
+# note (pg): values moved to sealmark.local.yaml and replaced here by ${...} references: env.PGPASSWORD
+# note (data): values moved to sealmark.local.yaml and replaced here by ${...} references: args[2]
+# note (api): values moved to sealmark.local.yaml and replaced here by ${...} references: headers.X-Api-Key
+# note (pyserver): cwd is ignored: the harness starts the server in its own sandbox directory
+# note (pyserver): envFile is not read: put the variables under env, or in sealmark.local.yaml
+
+schema_version: 1
+servers:
+  pg:
+    command: npx
+    args:
+      - -y
+      - "@example/postgres-mcp"
+    env:
+      PGPASSWORD: ${SEALMARK_INPUT_PG_PASSWORD}
+      PGHOST: localhost
+  data:
+    command: node
+    args:
+      - server.js
+      - --dir
+      - ${SEALMARK_INPUT_DATA_DIR}
+  api:
+    url: https://api.example.test/mcp
+    headers:
+      X-Api-Key: ${SEALMARK_INPUT_PG_PASSWORD}
+  pyserver:
+    command: python
+    args:
+      - -m
+      - srv

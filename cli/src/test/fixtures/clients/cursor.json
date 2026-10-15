@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "fs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${workspaceFolder}"]
+    },
+    "tools": {
+      "command": "node",
+      "args": ["${userHome}/mcp/server.js"],
+      "env": { "API_TOKEN": "${env:TOOLS_TOKEN}", "LOG": "info" }
+    },
+    "remote": { "url": "https://remote.example.test/mcp?api_key=fake-key-123&team=a" }
+  }
+}

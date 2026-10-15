@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=./node_modules/sealmark/schema/sealmark.schema.json
+# sealmark.yaml
+# Run:  sealmark run     Inspect:  sealmark config show --effective --origins
+
+schema_version: 1
+servers:
+  local-git:
+    command: uvx
+    args:
+      - mcp-server-git
+      - --repository
+      - D:/repos/demo
+  everything:
+    url: https://everything.example.test/mcp

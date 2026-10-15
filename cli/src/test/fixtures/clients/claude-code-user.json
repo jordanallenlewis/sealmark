@@ -1,0 +1,26 @@
+{
+  "numStartups": 12,
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://mcp.example.test/github/",
+      "headers": { "Authorization": "Bearer sk-fake-github-0000000000000000", "Accept": "application/json" }
+    }
+  },
+  "projects": {
+    "C:/Users/tester/work/demo": {
+      "allowedTools": [],
+      "mcpServers": {
+        "appdb": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["-y", "@example/postgres-mcp", "postgresql://app:fakepw@localhost:5432/appdb"],
+          "env": {}
+        }
+      }
+    },
+    "C:/Users/tester/work/other": {
+      "mcpServers": { "elsewhere": { "command": "echo", "args": ["not this project"] } }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+# Sealmark CLI tests. Runs typecheck and the full test suite on every pull request and push to main that touches cli/,
+# on both supported Node majors: 22 (the stated minimum, engines >=22.13) and 24 (where the sqlite tests also run).
+# Linux only. macOS and Windows are covered by the owner's own machine, so this adds no extra runner minutes.
+# It tests only; it deploys and publishes nothing (publish.yml does that).
+name: cli
+
+on:
+  pull_request:
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cli/**"
+      - ".github/workflows/cli.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install
+        working-directory: cli
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: cli
+        run: npm run typecheck
+
+      - name: Tests
+        working-directory: cli
+        run: npm test

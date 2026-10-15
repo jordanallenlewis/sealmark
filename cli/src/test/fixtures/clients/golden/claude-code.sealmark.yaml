@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=./node_modules/sealmark/schema/sealmark.schema.json
+# sealmark.yaml
+# Run:  sealmark run     Inspect:  sealmark config show --effective --origins
+# note (github): values moved to sealmark.local.yaml and replaced here by ${...} references: headers.Authorization
+# note (appdb): values moved to sealmark.local.yaml and replaced here by ${...} references: args[2]
+# note (legacy): legacy SSE transport: sealmark connects with Streamable HTTP, so this server may not answer; the http pack applies only partially
+
+schema_version: 1
+servers:
+  github:
+    url: https://mcp.example.test/github/
+    headers:
+      Authorization: ${SEALMARK_GITHUB_AUTHORIZATION}
+      Accept: application/json
+  appdb:
+    command: npx
+    args:
+      - -y
+      - "@example/postgres-mcp"
+      - postgresql://app:${SEALMARK_APPDB_ARG2_PASSWORD}@localhost:5432/appdb
+  search:
+    command: npx
+    args:
+      - -y
+      - "@example/search-mcp"
+      - --index
+      - ${SEARCH_INDEX:-docs}
+    env:
+      SEARCH_API_KEY: ${SEARCH_API_KEY}
+      REGION: ${REGION:-eu}
+  legacy:
+    url: https://sse.example.test/sse

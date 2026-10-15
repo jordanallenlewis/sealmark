@@ -1,0 +1,7 @@
+# paranoid: strict plus the opt-in exec pack and DNS probes.
+# The exec pack still runs only with --active on the command line; this profile cannot turn that on.
+extends: strict
+description: Strict plus the exec pack and DNS probes. exec still needs --active on the command line. CUSTOM.
+packs: [core, db, sqlite, fs, net, git, http, effects, exec]
+net:
+  allow_dns: true

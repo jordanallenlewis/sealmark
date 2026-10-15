@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\tester\\Documents\\notes"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": { "MEMORY_FILE_PATH": "C:\\Users\\tester\\memory.jsonl" }
+    },
+    "weather": {
+      "command": "uvx",
+      "args": ["demo-weather-mcp", "--units", "metric"],
+      "env": { "WEATHER_API_KEY": "sk-fake-0000000000000000", "UNITS": "metric" }
+    },
+    "broken": { "note": "neither a command nor a url" }
+  },
+  "globalShortcut": "Ctrl+Space"
+}

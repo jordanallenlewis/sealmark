@@ -1,0 +1,10 @@
+# ci: the standard checks with CI ergonomics. Identical checks, so a ci run can still be STANDARD.
+# Only output and exit policy differ (an inconclusive pack fails the gate), and neither affects a grade.
+extends: standard
+description: Standard checks with a log summary and JUnit and JSON files, no kept sandbox (the default A gate applies).
+sandbox:
+  keep: false
+output:
+  formats: [summary, junit, json]
+  exit_policy:
+    treat_inconclusive_as: fail

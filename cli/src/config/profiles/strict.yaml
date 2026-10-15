@@ -1,0 +1,10 @@
+# strict: standard with every advisory check scored.
+# Stricter is still not the published methodology, so a strict run is CUSTOM.
+extends: standard
+description: Standard with the advisory checks counted in the score. CUSTOM (stricter is still non-standard).
+checks:
+  write-gate: { severity: scored }
+  audit: { severity: scored }
+  exec-allowlist: { severity: scored }
+  http-bind: { severity: scored }
+  db-privilege: { severity: scored }

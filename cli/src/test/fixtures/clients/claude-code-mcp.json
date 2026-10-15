@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "search": {
+      "command": "npx",
+      "args": ["-y", "@example/search-mcp", "--index", "${SEARCH_INDEX:-docs}"],
+      "env": { "SEARCH_API_KEY": "${SEARCH_API_KEY}", "REGION": "${REGION:-eu}" }
+    },
+    "legacy": { "type": "sse", "url": "https://sse.example.test/sse" }
+  }
+}

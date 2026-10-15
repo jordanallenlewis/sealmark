@@ -1,0 +1,9 @@
+# sealmark.local.yaml: secrets and machine-specific values for sealmark.yaml.
+# Written by `sealmark init`, which also adds it to .gitignore. Never commit it or paste it into a report.
+# Lists replace across files: an `args` list here replaces the whole list in sealmark.yaml, so edit both when you change arguments.
+
+schema_version: 1
+servers:
+  weather:
+    env:
+      WEATHER_API_KEY: sk-fake-0000000000000000

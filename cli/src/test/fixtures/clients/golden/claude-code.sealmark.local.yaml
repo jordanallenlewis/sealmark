@@ -1,0 +1,14 @@
+# sealmark.local.yaml: secrets and machine-specific values for sealmark.yaml.
+# Written by `sealmark init`, which also adds it to .gitignore. Never commit it or paste it into a report.
+# Lists replace across files: an `args` list here replaces the whole list in sealmark.yaml, so edit both when you change arguments.
+
+schema_version: 1
+servers:
+  github:
+    headers:
+      Authorization: Bearer sk-fake-github-0000000000000000
+  appdb:
+    args:
+      - -y
+      - "@example/postgres-mcp"
+      - postgresql://app:fakepw@localhost:5432/appdb

@@ -1,0 +1,14 @@
+# legacy flat layout (schema_version 0)
+schema_version: 0
+name: legacy
+server:
+  command: node
+  args: ["srv.js"]
+timeout_probe: 5   # seconds the probes wait
+fail_under: B
+format: json
+checks:
+  cap-timeout:
+    timeout_sec: 7
+    row_cap: 500
+    enabled: true

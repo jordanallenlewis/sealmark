@@ -1,0 +1,108 @@
+name: publish
+
+# Publishes the `sealmark` npm package when cli/package.json names a version that is not on npm yet.
+# Tokenless: npm Trusted Publishing (OIDC). No npm token is stored in this repo or on a laptop.
+#
+# ONE-TIME SETUP (after the first manual publish, because npm only lets an existing package trust a workflow):
+#   npmjs.com -> package "sealmark" -> Settings -> Trusted Publisher -> GitHub Actions:
+#     Organization or user: jordanallenlewis   Repository: sealmark   Workflow filename: publish.yml
+# Provenance attestations are added automatically when the repository is public; a private repository still publishes.
+
+# Publish-on-push is on again (owner, 2026-10-15): a push to main that touches cli/** or this file publishes
+# cli/package.json's version when it is not on npm yet, after typecheck and tests pass. Bump the version to release.
+# Manual runs still work: Actions tab -> publish -> Run workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-sealmark
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: is this version already on npm?
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: v
+        run: |
+          VERSION=$(node -p "require('./cli/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "sealmark@$VERSION" version >/dev/null 2>&1; then
+            echo "sealmark@$VERSION is already on npm: nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sealmark@$VERSION is new: it will be tested and published"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    name: typecheck and tests
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Install
+        working-directory: cli
+        run: npm ci
+      - name: Typecheck
+        working-directory: cli
+        run: npm run typecheck
+      - name: Tests
+        working-directory: cli
+        run: npm test
+
+  publish:
+    name: publish to npm
+    timeout-minutes: 60
+    needs: [check, test]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install
+        working-directory: cli
+        run: npm ci
+      - name: Publish (tokenless via OIDC)
+        working-directory: cli
+        run: npm publish --access public
+      # npm holds a new version in "Validating" (automated review) and returns 404 for it until review ends.
+      # Wait for the version to become visible, and FAIL if it never does, so a green run means installable.
+      # Do not re-run the whole workflow while it is validating: `check` still sees a 404 and would publish again.
+      - name: Wait for npm validation to finish
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          DEADLINE=$(( $(date +%s) + 45 * 60 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            if npm view "sealmark@$VERSION" version 2>/dev/null; then
+              echo "sealmark@$VERSION is live"
+              exit 0
+            fi
+            echo "sealmark@$VERSION not visible yet (npm is still validating it); checking again in 30s"
+            sleep 30
+          done
+          echo "::error::sealmark@$VERSION was published but npm had not finished validating it after 45 minutes. It is NOT installable yet. Check https://www.npmjs.com/package/sealmark and your npm email; do not re-run this workflow."
+          exit 1

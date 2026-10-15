@@ -1,0 +1,203 @@
+# standard: the published methodology (0.3-draft). The only profile whose grade is "official".
+# Every setting that affects a grade is listed here with its published value; this file is the appendix of the methodology.
+# Generated from cli/src/config/schema.ts (npm run gen:standard). Do not edit by hand.
+description: The published methodology. A run is STANDARD only when these values are used unchanged.
+packs: [core, db, sqlite, fs, net, git, http, effects]
+timeout_probe_sec: 10
+checks:
+  protocol:
+    enabled: true
+    severity: null
+  tool-poisoning:
+    enabled: true
+    severity: null
+  robust-input:
+    enabled: true
+    severity: null
+    hang_ms: null
+    max_tools: 25
+  secret-echo:
+    enabled: true
+    severity: null
+  read-only:
+    enabled: true
+    severity: null
+  write-gate:
+    enabled: true
+    severity: null
+  rls:
+    enabled: true
+    severity: null
+  mutating-sql:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  pii:
+    enabled: true
+    severity: null
+  pii-masked:
+    enabled: true
+    severity: null
+  audit:
+    enabled: true
+    severity: null
+  db-rowcap:
+    enabled: true
+    severity: null
+    row_cap: 10000
+  db-timeout:
+    enabled: true
+    severity: null
+    expected_sec: null
+    slow_sql: null
+  sqlite-read-only:
+    enabled: true
+    severity: null
+  sqlite-mutating-sql:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  sqlite-file-read:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  sqlite-file-write:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  sqlite-extension-load:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  sqlite-rowcap:
+    enabled: true
+    severity: null
+    row_cap: 10000
+  sqlite-timeout:
+    enabled: true
+    severity: null
+    expected_sec: null
+  fs-read-escape:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  fs-write-escape:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  fs-link-escape:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  fs-size-cap:
+    enabled: true
+    severity: null
+    file_mib: 64
+    pass_mib: 16
+  net-loopback-ssrf:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  net-scheme-allowlist:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  net-caps:
+    enabled: true
+    severity: null
+  net-redirect:
+    enabled: true
+    severity: null
+  git-repo-scope:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  git-arg-injection:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  exec-injection:
+    enabled: true
+    severity: null
+    corpus:
+      add: []
+      remove: []
+  exec-cwd:
+    enabled: true
+    severity: null
+  exec-timeout-cap:
+    enabled: true
+    severity: null
+  exec-allowlist:
+    enabled: true
+    severity: null
+  http-origin:
+    enabled: true
+    severity: null
+  http-auth:
+    enabled: true
+    severity: null
+  http-protocol-version:
+    enabled: true
+    severity: null
+  http-session:
+    enabled: true
+    severity: null
+  http-cors:
+    enabled: true
+    severity: null
+  http-bind:
+    enabled: true
+    severity: null
+  http-tls:
+    enabled: true
+    severity: null
+  annotation-honesty:
+    enabled: true
+    severity: null
+  openworld-honesty:
+    enabled: true
+    severity: null
+  undeclared-writes:
+    enabled: true
+    severity: null
+sandbox:
+  enabled: true
+  scrub_env: true
+  keep_env: []
+  pack_timeout_sec: 600
+  max_mib: 1024
+tools:
+  include: ["*"]
+  exclude: []
+  overrides: {}
+timeouts:
+  call_ms: 30000
+  probe_ms: 10000
+net:
+  control_url: null
+  allow_dns: false

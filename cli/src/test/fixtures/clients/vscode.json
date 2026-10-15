@@ -1,0 +1,27 @@
+// VS Code allows comments and trailing commas in mcp.json.
+{
+  "inputs": [
+    { "type": "promptString", "id": "pg-password", "description": "Postgres password", "password": true },
+    { "type": "promptString", "id": "data-dir", "description": "Data directory" }
+  ],
+  "servers": {
+    "pg": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/postgres-mcp"],
+      "env": { "PGPASSWORD": "${input:pg-password}", "PGHOST": "localhost" }
+    },
+    "data": { "command": "node", "args": ["server.js", "--dir", "${input:data-dir}"] },
+    "api": {
+      "type": "http",
+      "url": "https://api.example.test/mcp",
+      "headers": { "X-Api-Key": "${input:pg-password}" }
+    },
+    "pyserver": {
+      "command": "python",
+      "args": ["-m", "srv"],
+      "cwd": "${workspaceFolder}/srv",
+      "envFile": "${workspaceFolder}/.env", /* trailing comma follows */
+    },
+  },
+}

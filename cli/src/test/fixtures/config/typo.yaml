@@ -1,0 +1,12 @@
+schema_version: 1
+name: typo-demo
+server:
+  command: node
+  args: ["x.js"]
+checks:
+  cap-timeout:
+    enabled: true
+    timout_sec: 5
+sandbox:
+  keepp: true
+  max_mib: lots

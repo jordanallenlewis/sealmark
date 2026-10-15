@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "local-git": {
+      "type": "local",
+      "command": "uvx",
+      "args": ["mcp-server-git", "--repository", "D:\\repos\\demo"],
+      "tools": ["*"]
+    },
+    "everything": { "type": "http", "url": "https://everything.example.test/mcp", "tools": ["*"] }
+  }
+}

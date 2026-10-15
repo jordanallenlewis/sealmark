@@ -1,0 +1,51 @@
+# End-to-end example for the scoped toy (docs/round6-design.md section 6.1). The toy: node dist/toy/scoped-http.js --mode good --port 8080 --backend {upstream}
+# A real server adapts this by replacing the command, the identifiers and the backend path regexes.
+schema_version: 1
+name: scoped-data-server
+server:
+  command: node
+  args: ["dist/toy/scoped-http.js", "--mode", "good", "--port", "8080", "--backend", "{upstream}"]
+  url: http://127.0.0.1:8080/mcp
+  headers: { Authorization: "Bearer {bearer}" }
+# identities: { a: "${TOKEN_A}", b: "${TOKEN_B}" }   # only if the server validates tokens it did not issue
+upstream:
+  kind: http
+  default_reply: { status: 200, json: { rows: [], count: 0 } }
+  responses:
+    - id: count
+      match: { path: "^/sql$", body: "count\\(\\*\\)" }
+      reply: { status: 200, json: { rows: [{ count: 3 }] } }
+scope:
+  tools: [{ tool: describe_table, param: table }, { tool: count_rows, param: table }]
+  allow: ["sales.public."]
+  deny: ["hr.private.salaries"]
+  case: insensitive
+sql_tools: [{ tool: query, arg: sql }]
+# search_notes says "never as SQL" in its description and has a parameter named q, which the classifier reads as a SQL tool (medium):
+# the override keeps it out of the SQL packs, so only the real SQL tool is sent the guard corpus.
+tools:
+  overrides: { search_notes: { class: text } }
+checks:
+  sql-guard-rowcap: { row_cap: 1000 }
+  instructions-hygiene: { deny: ["you are a helpful assistant", "ACME"] }
+probes:
+  - { tool: list_tables, args: {} }
+  - { tool: describe_table, args: { table: sales.public.orders } }
+  - { tool: search_notes, args: { q: "sm-{token}" } }
+  - id: agg-never-rows
+    check: { id: custom-aggregate-only, label: count_rows never returns raw rows, scope: server, critical: true }
+    tool: count_rows
+    args: { table: sales.public.orders }
+    upstream: { reply: { status: 200, json: { rows: [{ id: 1, note: "{upstream_token}" }], count: 1 } } }
+    expect: { is_error: false, upstream: { requests: any, token_echoed: false } }
+  - id: big-reply-capped
+    check: { id: custom-byte-cap, label: replies are capped at 1 MiB, scope: server }
+    tool: query
+    args: { sql: "SELECT * FROM sales.public.orders WHERE 'sm-{token}' = 'sm-{token}'" }
+    upstream: { reply: { bytes: 20971520, body: "{\"rows\":[\"{upstream_token}\"]}" } }
+    expect: { response: { max_bytes: 1048576 } }
+  - id: submitter-tag
+    check: { id: custom-submitter-tag, label: every forwarded query carries a submitter tag, scope: server }
+    tool: query
+    args: { sql: "SELECT 1 AS sm_{token}" }
+    expect: { upstream: { requests: any, all_matching: "\"submitter\":\"mcp:" } }

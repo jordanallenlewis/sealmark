@@ -1,0 +1,13 @@
+.DS_Store
+node_modules/
+dist/
+.env
+.env.*
+*.log
+.check.js
+.claude/
+
+# The website lives in the private sealmark-site repository; local copies here are never committed.
+web/
+fleet/
+site/

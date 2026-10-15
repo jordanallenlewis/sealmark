@@ -1,0 +1,65 @@
+{
+  "name": "sealmark",
+  "version": "0.2.2",
+  "description": "Behavioral conformance tests for MCP servers: runs a server, calls its tools with fixed probes, checks real side effects, and grades what it does.",
+  "type": "module",
+  "bin": {
+    "sealmark": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "!dist/test",
+    "schema",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/config/profiles','dist/config/profiles',{recursive:true})\" && node dist/config/gen-schema.js",
+    "test": "npm run build && node --test --test-timeout=1200000 \"dist/test/**/*.test.js\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "gen:standard": "node dist/config/gen-schema.js --standard > src/config/profiles/standard.yaml",
+    "prepack": "npm run build"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "pg": "^8.23.1",
+    "yaml": "^2.9.1"
+  },
+  "optionalDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2"
+  },
+  "homepage": "https://sealmark.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jordanallenlewis/sealmark.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/jordanallenlewis/sealmark/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "testing",
+    "conformance",
+    "security",
+    "ci",
+    "mcp-server"
+  ],
+  "author": {
+    "name": "Jordan Allen Lewis",
+    "url": "https://jordanallenlewis.com"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=./node_modules/sealmark/schema/sealmark.schema.json
+# sealmark.yaml
+# Run:  sealmark run     Inspect:  sealmark config show --effective --origins
+# note (weather): values moved to sealmark.local.yaml and replaced here by ${...} references: env.WEATHER_API_KEY
+
+schema_version: 1
+servers:
+  filesystem:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - C:/Users/tester/Documents/notes
+  memory:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-memory"
+    env:
+      MEMORY_FILE_PATH: C:/Users/tester/memory.jsonl
+  weather:
+    command: uvx
+    args:
+      - demo-weather-mcp
+      - --units
+      - metric
+    env:
+      WEATHER_API_KEY: ${WEATHER_API_KEY}
+      UNITS: metric
