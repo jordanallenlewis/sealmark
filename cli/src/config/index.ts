@@ -11,6 +11,7 @@ import {
   type DiffEntry,
   type EffectiveConfig,
   type IdentitySettings,
+  type OauthSettings,
   type NamedServer,
   type Origin,
   type OutputSettings,
@@ -26,6 +27,7 @@ import { isShipped, mergeChain, resolveChain, shippedProfile, standardMerged, SH
 import { LOCKED_LEAVES, SCHEMA, leafByPath, type Leaf } from "./schema.js";
 import { deleteIn, deepClone, deepEqual, didYouMean, getIn, isPlainObject, pointer, setIn } from "./util.js";
 import type { PackId, SealmarkConfig, ServerSpec, SqlTool } from "../types.js";
+import { withOauthHeader } from "../oauth.js";
 
 export * from "./model.js";
 export { FLAG_DEFS, flagsToLayer, parseArgsOptions, type FlagDef, type FlagValues } from "./flags.js";
@@ -576,7 +578,40 @@ export function loadEffectiveConfig(opts: LoadOptions): EffectiveConfig {
       round6.push(`${at(["probes"])}: ${who}: expect.upstream.token_echoed needs an upstream.reply with {upstream_token} (on the probe, or in upstream.responses)`);
     }
   });
+  // ---- round 7: the oauth declaration ----
+  const oauth = value.oauth as OauthSettings;
+  if (oauth.issuer === null && (oauth.audience !== null || oauth.scopes.length)) {
+    const key = oauth.audience !== null ? "audience" : "scopes";
+    round6.push(`${at(["oauth", key])}: oauth.${key} is set but oauth.issuer is not: set oauth.issuer: stub (or pass --oauth), or external for a server that trusts its own issuer`);
+  }
+  if (oauth.issuer) {
+    for (const sel of selected) {
+      const label = hasServers ? `servers.${sel.name}` : "server";
+      if (!sel.spec.url) {
+        round6.push(`${at(["oauth", "issuer"])}: oauth.issuer needs an HTTP server (${label}.url): MCP authorization applies to the Streamable HTTP transport; a stdio server takes its credentials from the environment`);
+        continue;
+      }
+      if (oauth.issuer !== "stub") continue;
+      if (!sel.spec.command) {
+        round6.push(`${at(["oauth", "issuer"])}: oauth.issuer: stub needs a server Sealmark starts (server.command + server.url, or --start with --url): the stub's issuer URL and signing key are new on every run, so ${label} cannot have been configured with them. Use oauth.issuer: external for a server that is already running`);
+        continue;
+      }
+      const parts = [...specParts(sel.spec), ...(sel.spec.files ?? []).flatMap((f) => [f.path, f.content])];
+      if (!parts.some((p) => p.includes("{issuer}") || p.includes("{jwks}"))) {
+        round6.push(`${at(["oauth", "issuer"])}: oauth.issuer: stub is set but ${label}.command/args/env/files never use {issuer} or {jwks}: the server cannot trust the harness's issuer. Pass them where the server reads its issuer and JWKS URL, for example server.env: { OAUTH_ISSUER: "{issuer}", OAUTH_JWKS_URL: "{jwks}", OAUTH_AUDIENCE: "{audience}" }`);
+      }
+      const auth = Object.entries(sel.spec.headers ?? {}).find(([k]) => k.toLowerCase() === "authorization");
+      if (auth && !/\{bearer(?::[ab])?\}/.test(auth[1])) {
+        round6.push(`${at(["oauth", "issuer"])}: ${label}.headers.${auth[0]} has a fixed value, but oauth.issuer: stub sends tokens the harness's issuer signed: write ${auth[0]}: "Bearer {bearer}" or remove the header (the harness adds it)`);
+      }
+    }
+    if (oauth.issuer === "stub" && (identities.a !== null || identities.b !== null)) {
+      round6.push(`${at(["identities", identities.a !== null ? "a" : "b"])}: identities.a and identities.b cannot be used with oauth.issuer: stub, which mints the caller tokens itself; remove them, or use oauth.issuer: external for a server that trusts its own issuer`);
+    }
+  }
   if (round6.length) throw new ConfigError(round6);
+  // --oauth alone is enough: an HTTP server whose headers carry no {bearer} is sent the identities as Authorization: Bearer {bearer}.
+  if (oauth.issuer === "stub") selected = selected.map((s) => ({ ...s, spec: withOauthHeader(s.spec, oauth) }));
 
   const integrity = evaluateIntegrity({ value, origins, profile: profileName, chain: chain.map((c) => c.name), plugins, probes });
 
@@ -611,6 +646,7 @@ export function loadEffectiveConfig(opts: LoadOptions): EffectiveConfig {
     upstream,
     scope,
     identities,
+    oauth,
     notCoveredExtra: (value.notCovered as { extra: string[] }).extra,
     active,
     yes: Boolean(value.yes),

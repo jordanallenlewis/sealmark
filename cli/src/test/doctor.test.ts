@@ -85,10 +85,10 @@ describe("runDoctor", { timeout: 120_000 }, () => {
     assert.deepEqual(s.startup!.capabilities, ["tools"]);
     assert.ok(s.classification!.length === s.startup!.tools);
     assert.match(s.classificationText![0], /^Classification:/);
-    // The three candidate packs of round 6 are always listed (their position depends on RUN_ORDER, so they are checked apart).
+    // The candidate packs (round 6, and oauth in round 7) are always listed (their position depends on RUN_ORDER, so they are checked apart).
     const listed = s.packs.map((p) => p.pack as string);
-    assert.deepEqual(listed.filter((p) => !["scope", "sql-guard", "upstream"].includes(p)), ["core", "db", "http", "fs", "git", "net", "sqlite", "exec", "effects", "custom"]);
-    for (const p of ["scope", "sql-guard", "upstream"]) assert.ok(listed.includes(p), `${p} is listed`);
+    assert.deepEqual(listed.filter((p) => !["scope", "sql-guard", "upstream", "oauth"].includes(p)), ["core", "db", "http", "fs", "git", "net", "sqlite", "exec", "effects", "custom"]);
+    for (const p of ["scope", "sql-guard", "upstream", "oauth"]) assert.ok(listed.includes(p), `${p} is listed`);
     assert.equal(pack(r, "core").applies, true);
     assert.match(pack(r, "db").reason, /no \{dsn\}.*placeholder/);
     assert.equal(pack(r, "db").applies, false);

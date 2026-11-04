@@ -88,6 +88,27 @@ const DOCS: CheckDoc[] = [
     status: "shipped",
   },
   {
+    id: "http-session-binding",
+    pack: "http",
+    label: "A session id is bound to the caller that opened it",
+    critical: false,
+    // A round 7 candidate: advisory in the standard http pack, so no letter moves until a methodology bump scores it.
+    advisory: true,
+    scope: "server as deployed (Mcp-Session-Id handling across two callers; MCP authorization specification, session binding)",
+    verifiedBy: ["http"],
+    probes: [
+      { id: "own-session", text: "identity A ({bearer:a}) opens a session and lists tools; identity B ({bearer:b}) opens a session of its own (B's control)", kind: "control" },
+      { id: "other-caller", text: "tools/list on A's Mcp-Session-Id with B's token", kind: "session" },
+      { id: "no-credential", text: "tools/list on A's Mcp-Session-Id with every credential header removed", kind: "session" },
+    ],
+    thresholds: {},
+    falsePositive: "A server whose sessions are deliberately shared between callers (one tenant, one session pool) fails; the MCP specification says a session id must not be used as authentication and should be bound to the user.",
+    falseNegative: "Only tools/list is tried on the borrowed session; a server that binds sessions for some methods only is not seen. Identities A and B come from {bearer:a} and {bearer:b}: without --oauth they are minted opaque tokens, and a server that refuses B's token on its own leaves the B leg inconclusive.",
+    configKeys: ["server.headers", "identities.a", "identities.b", "oauth.issuer", "checks.http-session-binding.enabled", "checks.http-session-binding.severity"],
+    since: "0.3-draft",
+    status: "shipped",
+  },
+  {
     id: "http-cors",
     pack: "http",
     label: "No permissive CORS",
@@ -169,14 +190,14 @@ function result(ctx: PackCtx, id: string, verdict: Verdict, summary: string, evi
 // HTTP plumbing
 // ---------------------------------------------------------------------------------------------------------
 
-interface Conn {
+export interface Conn {
   url: string;
   /** Configured headers with placeholders and ${VAR} references filled in. Values never reach evidence. */
   headers: Record<string, string>;
   reqMs: number;
 }
 
-interface Reply {
+export interface Reply {
   /** 0 when no HTTP response arrived (connection refused, timeout). */
   status: number;
   headers: Headers;
@@ -188,7 +209,7 @@ interface Reply {
 
 const NO_HEADERS = new Headers();
 
-function excerpt(s: string, n = 120): string {
+export function excerpt(s: string, n = 120): string {
   const t = s.replace(/\s+/g, " ").trim();
   return t.length > n ? `${t.slice(0, n)}...` : t;
 }
@@ -232,7 +253,7 @@ async function readSse(res: Response, wantId: unknown, ms: number): Promise<{ rp
   }
 }
 
-interface SendOptions {
+export interface SendOptions {
   method?: "POST" | "DELETE" | "OPTIONS";
   /** Send none of the configured headers (credentials included). */
   noConfigured?: boolean;
@@ -241,7 +262,7 @@ interface SendOptions {
   body?: unknown;
 }
 
-async function send(conn: Conn, o: SendOptions): Promise<Reply> {
+export async function send(conn: Conn, o: SendOptions): Promise<Reply> {
   const headers: Record<string, string> = {};
   if (o.method !== "OPTIONS" && o.method !== "DELETE") {
     headers["content-type"] = "application/json";
@@ -284,26 +305,26 @@ async function send(conn: Conn, o: SendOptions): Promise<Reply> {
 }
 
 let nextId = 1;
-const rpcBody = (method: string, params?: unknown) => ({ jsonrpc: "2.0", id: nextId++, method, ...(params !== undefined ? { params } : {}) });
+export const rpcBody = (method: string, params?: unknown) => ({ jsonrpc: "2.0", id: nextId++, method, ...(params !== undefined ? { params } : {}) });
 
-const isInitResult = (r: Reply): boolean => r.status === 200 && r.rpc?.result !== undefined && typeof r.rpc.result.protocolVersion === "string";
-const hasTools = (r: Reply): boolean => r.status === 200 && Array.isArray(r.rpc?.result?.tools);
+export const isInitResult = (r: Reply): boolean => r.status === 200 && r.rpc?.result !== undefined && typeof r.rpc.result.protocolVersion === "string";
+export const hasTools = (r: Reply): boolean => r.status === 200 && Array.isArray(r.rpc?.result?.tools);
 /** The Location header of a 3xx reply, in words: a redirect is the usual reason a probe of a correct URL fails (a missing trailing slash). */
 const locationOf = (r: Reply): string => (r.status >= 300 && r.status < 400 ? (r.headers.get("location") ?? "") : "");
-const describeReply = (r: Reply): string => {
+export const describeReply = (r: Reply): string => {
   if (r.status === 0) return `no response (${r.error})`;
   const loc = locationOf(r);
   return `HTTP ${r.status}${loc ? ` (Location: ${excerpt(loc, 100)}; the server redirected the request, try the URL it points to or with a trailing slash)` : ""}${r.text ? `: ${excerpt(r.text, 100)}` : ""}`;
 };
 
-interface Session {
+export interface Session {
   reply: Reply;
   ok: boolean;
   sessionId?: string;
   protocolVersion?: string;
 }
 
-async function initialize(conn: Conn, o: Omit<SendOptions, "body" | "method"> = {}): Promise<Session> {
+export async function initialize(conn: Conn, o: Omit<SendOptions, "body" | "method"> = {}): Promise<Session> {
   const reply = await send(conn, { ...o, body: rpcBody("initialize", { protocolVersion: INIT_VERSION, capabilities: {}, clientInfo: { name: "sealmark", version: "0.2" } }) });
   const ok = isInitResult(reply);
   const sessionId = reply.headers.get("mcp-session-id") ?? undefined;
@@ -315,7 +336,7 @@ async function initialize(conn: Conn, o: Omit<SendOptions, "body" | "method"> = 
   return { reply, ok, sessionId, protocolVersion };
 }
 
-async function listTools(conn: Conn, s: Pick<Session, "sessionId" | "protocolVersion">, o: Omit<SendOptions, "body" | "method"> = {}, over: Record<string, string | null> = {}): Promise<Reply> {
+export async function listTools(conn: Conn, s: Pick<Session, "sessionId" | "protocolVersion">, o: Omit<SendOptions, "body" | "method"> = {}, over: Record<string, string | null> = {}): Promise<Reply> {
   return send(conn, {
     ...o,
     headers: { ...(o.headers ?? {}), ...(s.sessionId ? { "mcp-session-id": s.sessionId } : {}), ...(s.protocolVersion ? { "mcp-protocol-version": s.protocolVersion } : {}), ...over },
@@ -323,7 +344,7 @@ async function listTools(conn: Conn, s: Pick<Session, "sessionId" | "protocolVer
   });
 }
 
-async function terminate(conn: Conn, s: Session | undefined, o: Omit<SendOptions, "body" | "method"> = {}): Promise<void> {
+export async function terminate(conn: Conn, s: Session | undefined, o: Omit<SendOptions, "body" | "method"> = {}): Promise<void> {
   if (!s?.sessionId) return;
   await send(conn, { ...o, method: "DELETE", headers: { ...(o.headers ?? {}), "mcp-session-id": s.sessionId, ...(s.protocolVersion ? { "mcp-protocol-version": s.protocolVersion } : {}) } });
 }
@@ -539,6 +560,40 @@ export function makePack(deps: HttpDeps = {}): Pack {
               if (!rejectedOk) return result(ctx, "http-session", "part", `requests with a missing or forged session id were not accepted, but the statuses (${describeReply(none)}; ${describeReply(fake)}) are not the 400/404 the specification names`, evidence);
               if (weakWhy.length) return result(ctx, "http-session", "part", `session ids are validated, but the issued id is weak: ${weakWhy.join("; ")}`, evidence);
               return result(ctx, "http-session", "pass", `missing and forged session ids are rejected (${none.status}, ${fake.status}) and the issued id is ${sid.length} printable characters, different each time`, evidence);
+            })()),
+        );
+
+        // ---- http-session-binding (round 7 candidate, advisory here) ----
+        out.push(
+          off("http-session-binding") ??
+            (await (async () => {
+              const id = "http-session-binding";
+              if (!creds.length) return result(ctx, id, "na", "no credential header is configured, so there is no caller to bind a session to", []);
+              const bTok = ctx.identity?.identities.find((i) => i.name === "b")?.bearer;
+              const perCaller = Object.entries(spec.headers ?? {}).filter(([, v]) => /\{bearer\}/.test(v)).map(([k]) => k);
+              if (!bTok || !perCaller.length) return result(ctx, id, "na", "the configured headers carry no {bearer}, so the harness has no second caller: write Authorization: \"Bearer {bearer}\" (identities A and B), or pass --oauth", [controlEv]);
+              const c = needControl(id);
+              if (c) return c;
+              if (!control.sessionId) return result(ctx, id, "na", "the server issued no Mcp-Session-Id (stateless), so there is no session to bind", [controlEv]);
+              // B's headers: every configured header with {bearer} filled with B's token (what openAs("b") sends).
+              const asB: Record<string, string> = Object.fromEntries(perCaller.map((k) => [k, expandHarness(spec.headers![k]!, { ...tctx, vars: { ...tctx.vars, bearer: bTok } })]));
+              const bare: Record<string, null> = Object.fromEntries(creds.map((k) => [k, null]));
+              const own = await listTools(conn, control);
+              const evOwn: Evidence = { probe: "POST tools/list on A's session with A's token", outcome: hasTools(own) ? "tools returned" : describeReply(own), verifiedBy: "http", code: "http.control" };
+              if (!hasTools(own)) return result(ctx, id, "inconclusive", `the control tools/list on A's own session failed (${describeReply(own)}), so a refusal of another caller could not be told from a broken session`, [controlEv, evOwn]);
+              const bOwn = await track({ headers: asB });
+              const evB: Evidence = { probe: "POST initialize as identity B ({bearer:b})", outcome: bOwn.ok ? "valid InitializeResult" : describeReply(bOwn.reply), verifiedBy: "http", code: "http.control" };
+              const other = await listTools(conn, control, { headers: asB });
+              const none = await listTools(conn, control, { headers: bare });
+              const evOther: Evidence = { probe: "POST tools/list on A's Mcp-Session-Id with B's token", outcome: hasTools(other) ? "tools returned (A's session served B)" : describeReply(other), verifiedBy: "http", code: hasTools(other) ? "http.session-binding-served" : "http.session-binding" };
+              const evNone: Evidence = { probe: `POST tools/list on A's Mcp-Session-Id without ${creds.join(", ")}`, outcome: hasTools(none) ? "tools returned (the session id alone was accepted)" : describeReply(none), verifiedBy: "http", code: hasTools(none) ? "http.session-binding-served" : "http.session-binding" };
+              const evidence = [controlEv, evOwn, evB, evOther, evNone];
+              const served: string[] = [];
+              if (hasTools(none)) served.push("a request that carried no credential (the session id alone is accepted as authentication)");
+              if (hasTools(other)) served.push("a request that carried identity B's token (the session is not bound to the caller who opened it)");
+              if (served.length) return result(ctx, id, "fail", `identity A's session answered ${served.join(" and ")}`, evidence);
+              if (!bOwn.ok) return result(ctx, id, "inconclusive", `identity B's token was refused on its own (${describeReply(bOwn.reply)}), so its refusal on A's session does not show the session is bound; a request with no credential was refused (${describeReply(none)}). With --oauth the harness issues B a token the server accepts`, evidence);
+              return result(ctx, id, "pass", `A's session refused B's token (HTTP ${other.status}) and a request without credentials (HTTP ${none.status}), while B could open a session of its own`, evidence);
             })()),
         );
 

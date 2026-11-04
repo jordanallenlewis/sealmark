@@ -64,7 +64,7 @@ export const S01 = "0.1-draft";
 export const S02 = "0.2-draft";
 export const S03 = "0.3-draft";
 
-export const PACK_IDS = ["core", "db", "sqlite", "fs", "net", "git", "exec", "http", "effects", "custom", "scope", "sql-guard", "upstream"] as const;
+export const PACK_IDS = ["core", "db", "sqlite", "fs", "net", "git", "exec", "http", "effects", "custom", "scope", "sql-guard", "upstream", "oauth"] as const;
 /** Packs the published standard profile runs. `exec` is opt-in (adding a pack is allowed, removing one is not). `custom` runs when probes are written. */
 export const STANDARD_PACKS = ["core", "db", "sqlite", "fs", "net", "git", "http", "effects"];
 
@@ -141,6 +141,14 @@ export const CHECKS: CheckDef[] = [
   { id: "log-secret", pack: "upstream", since: S03, candidate: true },
   { id: "upstream-error-leak", pack: "upstream", since: S03, candidate: true },
   { id: "upstream-slow", pack: "upstream", since: S03, candidate: true },
+  // Round 7 candidates: the oauth candidate pack, token passthrough in upstream, and session binding in http
+  // (advisory there, because http is a standard pack). Unlocked, so the standard hash does not move.
+  { id: "oauth-token-forgery", pack: "oauth", since: S03, candidate: true },
+  { id: "oauth-claims", pack: "oauth", since: S03, candidate: true },
+  { id: "oauth-discovery", pack: "oauth", since: S03, candidate: true },
+  { id: "oauth-scope", pack: "oauth", since: S03, candidate: true },
+  { id: "upstream-token-passthrough", pack: "upstream", since: S03, candidate: true },
+  { id: "http-session-binding", pack: "http", since: S03, candidate: true },
 ];
 
 /** Words a refusal may carry to count as routing the caller somewhere (checks.refusal-quality.patterns default; design section 3.7). */
@@ -337,6 +345,12 @@ function build(): Leaf[] {
     L("scope.case", "enum", "insensitive", "Whether the server compares identifiers case-insensitively (the default) or case-sensitively. An upper-case spelling of an allowed name that is refused under insensitive is noted, never failed.", { since: S03, enum: ["sensitive", "insensitive"] }),
     L("checks.sql-guard-rowcap.row_cap", "integer", 10000, "Largest LIMIT (or FETCH FIRST / TOP) the statement the server forwards may carry before sql-guard-rowcap fails. A candidate setting: unlocked.", { since: S03, min: 1 }),
     L("checks.sql-guard-statements.control_sql", "string", null, "A SELECT or WITH statement the harness sends as the control for sql-guard-statements; it must reach the upstream stub. null builds one (SELECT 1 AS sm_<token>, or a read of the first exact scope.allow entry).", { since: S03, shape: CONTROL_SQL_SHAPE, nullable: true }),
+    // --- round 7: the oauth candidate pack and the stub authorization server (every leaf unlocked, so the standard hash does not move) ---
+    L("oauth.issuer", "enum", null, "Which OAuth issuer the server under test trusts. stub starts the harness's own authorization server on loopback (flag --oauth): {issuer} and {jwks} name it, and the caller identities ({bearer}, {bearer:a}, {bearer:b}) become tokens it signed for {audience}, sent as Authorization: Bearer. Point the server's issuer, JWKS URL and audience at those placeholders in server.env or server.args. external declares a server that trusts its own issuer: only the checks that need no harness-signed token run (oauth-discovery). null declares nothing.", { since: S03, enum: ["stub", "external"], nullable: true }),
+    L("oauth.audience", "string", null, "The audience (RFC 8707 resource) the stub's tokens carry and the protected-resource metadata must name; the value of {audience}. null uses server.url in canonical form (no fragment, no trailing slash).", { since: S03, nullable: true, shape: { k: "string", nonEmpty: true } }),
+    L("oauth.scopes", "string[]", [], "Scopes the server requires: the control token carries them, and oauth-scope sends a token without them, which must be refused. Empty skips the scope probe.", { since: S03 }),
+    L("oauth.tls", "boolean", true, "Serve the stub issuer over https with a throwaway CA made for this run: {issuer} and {jwks} are https:// URLs and {ca_file} is the CA's PEM file. The harness also sets SSL_CERT_FILE, REQUESTS_CA_BUNDLE and NODE_EXTRA_CA_CERTS for the server it starts (to a bundle of that CA and the public roots) unless server.env sets them. false serves plain http, which a hardened server refuses as a trust root (flag --no-oauth-tls).", { since: S03 }),
+    L("oauth.client_id", "string", "sealmark", "The client_id claim of the tokens the stub mints.", { since: S03, shape: { k: "string", nonEmpty: true } }),
     L("checks.upstream-slow.expected_sec", "number", null, "Seconds the server may take to answer when the upstream is slow before upstream-slow fails (a little slack is added). null uses timeout_probe_sec.", { since: S03, min: 0, exclusiveMin: true, nullable: true }),
     L("checks.refusal-quality.patterns", "string[]", [...REFUSAL_ROUTING_PATTERNS], "Regular expressions that mark a refusal as routing the caller (naming what is available, what to use instead, that retrying will not help). Replaces the default list.", { since: S03, shape: regexList }),
     L("checks.instructions-hygiene.deny", "string[]", [], "Regular expressions the server's instructions must not match (a leftover prompt, a product name). Appends across layers.", { since: S03, shape: regexList, mergeable: true }),

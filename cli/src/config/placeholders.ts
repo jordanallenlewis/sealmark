@@ -6,9 +6,11 @@ import { didYouMean } from "./util.js";
 const DB_KEYS = new Set(["host", "port", "user", "password", "database", "role"]);
 /**
  * Harness-owned targets (sandbox, listener, fixtures, the upstream stub, caller identities). `{dir}` is an alias of `{sandbox}`;
- * `{bearer}` is `{bearer:a}`. `{upstream_token}` is not listed: it exists only inside an upstream reply body.
+ * `{bearer}` is `{bearer:a}`. `{upstream_token}` is not listed: it exists only inside an upstream reply body. Round 7: `{issuer}`, `{jwks}` and
+ * `{audience}` name the stub authorization server and the resource its tokens are for (`oauth.issuer: stub`); `{ca_file}` is the
+ * PEM file of the throwaway CA its https certificate chains to (D41).
  */
-export const HARNESS_KEYS = ["sandbox_home", "sandbox", "canary", "listener", "token", "sqlite_path", "duckdb_path", "dir", "upstream", "bearer:a", "bearer:b", "bearer"];
+export const HARNESS_KEYS = ["sandbox_home", "sandbox", "canary", "listener", "token", "sqlite_path", "duckdb_path", "dir", "upstream", "bearer:a", "bearer:b", "bearer", "issuer", "jwks", "audience", "ca_file"];
 
 const ALL_SOURCE = `\\{(dsn(?::[a-z_]+)?|host|port|user|password|database|role|${HARNESS_KEYS.join("|")})\\}`;
 const DB_SOURCE = "\\{(dsn(?::[a-z_]+)?|host|port|user|password|database|role)\\}";
@@ -20,7 +22,7 @@ export const dbPlaceholders = () => new RegExp(DB_SOURCE, "g");
 export const ROLE_NAMES = ["analyst", "support", "admin"];
 
 export interface TemplateCtx {
-  /** Values for {dsn}, {host}, {port}, {user}, {password}, {database}, {role} for the role being tested, and for the harness placeholders {sandbox}, {sandbox_home}, {canary}, {listener}, {token}, {sqlite_path}, {duckdb_path}, {dir}, {upstream}, {bearer}, {bearer:a}, {bearer:b}. */
+  /** Values for {dsn}, {host}, {port}, {user}, {password}, {database}, {role} for the role being tested, and for the harness placeholders {sandbox}, {sandbox_home}, {canary}, {listener}, {token}, {sqlite_path}, {duckdb_path}, {dir}, {upstream}, {bearer}, {bearer:a}, {bearer:b}, {issuer}, {jwks}, {audience}, {ca_file}. */
   vars: Record<string, string>;
   /** Per-role DSNs for {dsn:analyst}, {dsn:support}, {dsn:admin}. */
   dsns: Record<string, string>;

@@ -96,7 +96,7 @@ describe("candidate packs are valid pack names; the standard pack list is untouc
     assert.ok(["scope", "sql-guard", "upstream"].every((p) => (PACK_IDS as readonly string[]).includes(p)));
     const cfg = load(`${STDIO}packs: [core, scope, sql-guard, upstream]\n`);
     assert.deepEqual(cfg.packs, ["core", "scope", "sql-guard", "upstream"]);
-    assert.match(bad(STDIO, { flags: { pack: ["scop"] } }), /unknown pack "scop" \(use core, db, sqlite, fs, net, git, exec, http, effects, custom, scope, sql-guard, upstream\); did you mean "scope"\?/);
+    assert.match(bad(STDIO, { flags: { pack: ["scop"] } }), /unknown pack "scop" \(use core, db, sqlite, fs, net, git, exec, http, effects, custom, scope, sql-guard, upstream, oauth\); did you mean "scope"\?/);
   });
 
   it("STANDARD_PACKS names none of them", () => {

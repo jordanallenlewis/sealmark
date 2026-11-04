@@ -102,6 +102,22 @@ export interface IdentitySettings {
   b: string | null;
 }
 
+/**
+ * `EffectiveConfig.oauth`: which issuer the server under test trusts. `stub` starts the harness's own
+ * authorization server ({issuer}, {jwks}) and makes the caller identities tokens it signed; `external` declares a server that uses its own
+ * issuer, so only what needs no harness-signed token runs (discovery). null: the oauth pack is not declared.
+ */
+export interface OauthSettings {
+  issuer: "stub" | "external" | null;
+  /** The RFC 8707 resource the tokens are for; null = the server URL, canonical (no fragment, no trailing slash). */
+  audience: string | null;
+  /** Scopes the control token carries and the server requires; empty = no scope probe. */
+  scopes: string[];
+  client_id: string;
+  /** the stub issuer serves https with a throwaway CA ({ca_file}); false serves plain http. Default true. */
+  tls: boolean;
+}
+
 export interface ProbeExpect {
   is_error?: boolean;
   text?: { matches?: string; not_matches?: string };
@@ -237,6 +253,8 @@ export interface EffectiveConfig {
   scope?: ScopeSettings;
   /** Round 6: caller A and B tokens for `{bearer:a}` / `{bearer:b}`; null = mint per run. Secrets: never print them. */
   identities?: IdentitySettings;
+  /** Round 7: the oauth declaration (`oauth.issuer: stub` starts the harness's stub authorization server). Optional so hand-built configs compile. */
+  oauth?: OauthSettings;
   notCoveredExtra: string[];
   /** Safety flags: only ever true when given on the command line. */
   active: boolean;

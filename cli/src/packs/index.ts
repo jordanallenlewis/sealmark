@@ -7,6 +7,7 @@ import { pack as fs } from "./fs.js";
 import { pack as git } from "./git.js";
 import { pack as http } from "./http.js";
 import { pack as net } from "./net.js";
+import { pack as oauth } from "./oauth.js";
 import { pack as scope } from "./scope.js";
 import { pack as sqlGuard } from "./sql-guard.js";
 import { pack as sqlite } from "./sqlite.js";
@@ -47,13 +48,13 @@ export const dbPack: Pack = {
 };
 
 /** Every built-in pack. Replacing a placeholder means overwriting its file; this list never changes. */
-export const REGISTRY: Pack[] = [corePack, dbPack, http, fs, git, net, sqlite, exec, scope, sqlGuard, upstream, effects, custom];
+export const REGISTRY: Pack[] = [corePack, dbPack, http, fs, git, net, sqlite, exec, scope, sqlGuard, upstream, oauth, effects, custom];
 
 /**
  * Order in which run.ts executes the packs that follow `core` and `db`.
- * `effects` comes after the packs whose calls it audits, the candidate packs (`scope`, `sql-guard`, `upstream`) included.
+ * `effects` comes after the packs whose calls it audits, the candidate packs (`scope`, `sql-guard`, `upstream`, `oauth`) included.
  */
-export const RUN_ORDER: PackId[] = ["http", "fs", "git", "net", "sqlite", "exec", "scope", "sql-guard", "upstream", "effects", "custom"];
+export const RUN_ORDER: PackId[] = ["http", "fs", "git", "net", "sqlite", "exec", "scope", "sql-guard", "upstream", "oauth", "effects", "custom"];
 
 export function getPack(id: PackId): Pack | undefined {
   return REGISTRY.find((p) => p.id === id);

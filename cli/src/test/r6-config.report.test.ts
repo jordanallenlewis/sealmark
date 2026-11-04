@@ -138,7 +138,8 @@ describe("a candidate pack is labelled in every format and stays off the badge",
   });
 
   it("the pack order puts the candidate packs after effects and before custom, and the report follows it", () => {
-    assert.deepEqual(PACK_ORDER.slice(8, 13), ["effects", "scope", "sql-guard", "upstream", "custom"]);
+    // Round 7 adds the oauth candidate pack after upstream.
+    assert.deepEqual(PACK_ORDER.slice(8, 14), ["effects", "scope", "sql-guard", "upstream", "oauth", "custom"]);
     const r = run({}, { upstream: "A", core: "A", custom: "A", scope: "B" });
     assert.deepEqual(orderedPackIds(r), ["core", "scope", "upstream", "custom"]);
   });

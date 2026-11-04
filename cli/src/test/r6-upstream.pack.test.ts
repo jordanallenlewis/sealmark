@@ -157,13 +157,15 @@ async function runPack(s: Setup): Promise<{ checks: CheckResult[]; stub: FakeStu
 }
 
 const verdicts = (cs: CheckResult[]): Record<string, Verdict> => Object.fromEntries(cs.map((c) => [c.id, c.verdict]));
-const IDS = ["upstream-credential", "upstream-credential-echo", "log-secret", "upstream-error-leak", "upstream-slow"] as const;
+const IDS = ["upstream-credential", "upstream-credential-echo", "log-secret", "upstream-error-leak", "upstream-slow", "upstream-token-passthrough"] as const;
+// Round 7: upstream-token-passthrough needs the stub issuer (--oauth), which these runs do not start, so it is n/a in every row.
 const row = (cred: Verdict, echo: Verdict, leak: Verdict, slow: Verdict, logv: Verdict): Record<string, Verdict> => ({
   "upstream-credential": cred,
   "upstream-credential-echo": echo,
   "upstream-error-leak": leak,
   "upstream-slow": slow,
   "log-secret": logv,
+  "upstream-token-passthrough": "na",
 });
 
 // ---- tests -------------------------------------------------------------------------------------------------
@@ -253,7 +255,7 @@ describe("upstream pack: na and inconclusive wording", () => {
   it("no probes: every check is inconclusive with the no-valid-call reason, and nothing is called", async () => {
     const r = await runPack({ mode: "good", probes: [] });
     assert.deepEqual(verdicts(r.checks), row("inconclusive", "inconclusive", "inconclusive", "inconclusive", "inconclusive"));
-    for (const c of r.checks) assert.match(c.summary, /no valid call: add a `probes:` entry without `check`/);
+    for (const c of r.checks.filter((x) => x.id !== "upstream-token-passthrough")) assert.match(c.summary, /no valid call: add a `probes:` entry without `check`/);
     assert.equal(r.stub.requests().length, 0);
     assert.deepEqual(r.stub.modeLog, []);
   });
@@ -293,10 +295,10 @@ describe("upstream pack: na and inconclusive wording", () => {
 });
 
 describe("upstream pack: describe()", () => {
-  it("documents the five checks, none advisory, only the credential check critical", () => {
+  it("documents the six checks, none advisory, the credential and token-passthrough checks critical", () => {
     const docs = pack.describe();
     assert.deepEqual(docs.map((d) => d.id), [...IDS]);
-    assert.deepEqual(docs.filter((d) => d.critical).map((d) => d.id), ["upstream-credential"]);
+    assert.deepEqual(docs.filter((d) => d.critical).map((d) => d.id), ["upstream-credential", "upstream-token-passthrough"]);
     assert.ok(docs.every((d) => d.pack === ("upstream" as PackId) && !d.advisory && d.scope.startsWith("server") && d.probes.length > 0));
   });
 });

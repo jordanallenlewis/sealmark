@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { statSync } from "node:fs";
+import { statSync, writeFileSync } from "node:fs";
+import { rootCertificates } from "node:tls";
 import { userInfo } from "node:os";
-import { posix, win32 } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { classificationBlock, classifyTools, packsFor, secondaryUrlParam } from "./classify.js";
 import { TEMPLATE_COMMAND, displaySpec, expand, usesPlaceholders, type TemplateCtx } from "./config.js";
 import { CONNECT_TIMEOUT_ADVICE, isConnectTimeout, launchServer, stopOnSignals, type LaunchedServer } from "./launch.js";
@@ -14,6 +15,8 @@ import { RUN_ORDER, getPack } from "./packs/index.js";
 import { NO_SCOPE_TOOL, NO_UPSTREAM_STUB, NO_VALID_CALL, listenerReachable } from "./packs/shared.js";
 import { hasCheckProbes, isCheckProbe } from "./probes.js";
 import { MAX_REPORT_FIELD, inert, inertLines } from "./report/sanitize.js";
+import { startAuthServer } from "./observers/authserver.js";
+import { CA_ENV_VARS, OAUTH_SUB, OAUTH_TRUST_HINT, accessTokenClaims, canonicalResource, oauthSettings, oauthStartupHint } from "./oauth.js";
 import { createSandbox } from "./sandbox.js";
 import { ensureSqliteFixture } from "./sqlite-fixtures.js";
 import { CANDIDATE_PACKS, type PackCtx, type PackId, type Sandbox, type Suggestion, type ToolClassification } from "./types.js";
@@ -353,6 +356,7 @@ function gate(id: PackId, g: GateInput): string | undefined {
     if (id_ === "upstream" && !g.validProbes) return NO_VALID_CALL;
   }
   if (id === "http" && g.transport !== "http") return "the server is started over stdio; the http pack needs server.url";
+  if (id_ === "oauth" && g.transport !== "http") return "the oauth pack grades the authorization of an HTTP server (server.url); a stdio server takes its credentials from the environment";
   if (id === "net" && g.remoteHost) return `the server runs on ${g.remoteHost}, so it cannot reach the harness's loopback listener; the net pack is only meaningful for stdio servers or an HTTP server on this machine`;
   if (id === "custom" && !g.probes) return "no probes: are declared in the config";
   const take = (want: PackId) => g.classification.some((c) => packsFor(c, { active: g.active, sandboxEnabled: g.sandboxOn }).includes(want));
@@ -427,6 +431,25 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
     "bearer:b": DOCTOR_DUMMY_BEARER.b,
     ...(usesDb ? { ...DUMMY_DB, dsn: DOCTOR_DUMMY_DSN } : {}),
   };
+  // Round 7: with oauth.issuer: stub, doctor starts the real stub issuer (it is cheap and loopback only) and signs real identity tokens, so a
+  // server that checks its tokens answers initialize as it will in a run, and a server that does not trust the issuer is told what to set.
+  const oauth = oauthSettings(cfg);
+  const authStub = oauth.issuer === "stub" && transport === "http" ? await startAuthServer({ tls: oauth.tls }).catch(() => undefined) : undefined;
+  // D41, as run does it: the CA alone as {ca_file}, and a bundle with the public roots for SSL_CERT_FILE and friends (set unless server.env sets them).
+  let caEnv: Record<string, string> = {};
+  if (authStub?.caPem) {
+    const caFile = join(sb.dir, "oauth-ca.pem");
+    const bundle = join(sb.dir, "oauth-ca-bundle.pem");
+    writeFileSync(caFile, authStub.caPem, { mode: 0o600 });
+    writeFileSync(bundle, [authStub.caPem, ...rootCertificates].join("\n"), { mode: 0o600 });
+    vars.ca_file = caFile;
+    caEnv = Object.fromEntries(CA_ENV_VARS.filter((k) => !Object.keys(spec.env ?? {}).some((e) => e.toUpperCase() === k)).map((k) => [k, bundle]));
+  } else if (authStub) vars.ca_file = "";
+  if (authStub) {
+    const audience = oauth.audience ?? canonicalResource(expand(spec.url!, { vars, dsns: {}, env: cfg.env }));
+    const mint = (sub: string) => authStub.mint(accessTokenClaims({ issuer: authStub.issuer, audience, scopes: oauth.scopes, clientId: oauth.client_id }, sub));
+    Object.assign(vars, { issuer: authStub.issuer, jwks: authStub.jwksUri, audience, bearer: mint(OAUTH_SUB.a), "bearer:a": mint(OAUTH_SUB.a), "bearer:b": mint(OAUTH_SUB.b) });
+  }
   const ctx: TemplateCtx = { vars, dsns: usesDb ? { analyst: vars.dsn, support: vars.dsn, admin: vars.dsn } : {}, env: cfg.env };
   const where: OpenOptions =
     transport === "http" ? {} : sandboxOn ? (cfg.sandbox.scrub_env ? { cwd: sb.root, baseEnv: sb.env(), envMode: "scrubbed" } : { cwd: sb.root, envMode: "inherit" }) : { cleanCwd: true, envMode: "inherit" };
@@ -459,11 +482,11 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
       launched = await launchServer({
         command: expand(spec.command, ctx),
         args: (spec.args ?? []).map((a) => expand(a, ctx)),
-        env: Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])),
+        env: { ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) },
         url: expand(spec.url!, ctx),
         timeoutMs: (spec.start_timeout_sec ?? 60) * 1000,
         // Inside the sandbox, as run starts it: the sandbox root as cwd and, unless sandbox.scrub_env is off, the scrubbed environment.
-        ...(sandboxOn ? { cwd: sb.root, ...(cfg.sandbox.scrub_env ? { baseEnv: sb.env(Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)]))) } : {}) } : {}),
+        ...(sandboxOn ? { cwd: sb.root, ...(cfg.sandbox.scrub_env ? { baseEnv: sb.env({ ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) }) } : {}) } : {}),
         onProgress: log,
         onStarted: (h) => {
           launched = h;
@@ -473,6 +496,8 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
     } catch (e) {
       launchFailed = true;
       items.push({ id: "launch", status: "fail", title: "the server did not start", detail: (e as Error).message });
+      // Round 7: a hardened server refuses to start on a trust root it does not accept (an http issuer, an unknown CA).
+      if (authStub) items.push({ id: "advice", status: "info", title: "the server was given the harness's stub issuer (oauth.issuer: stub) and stopped before it answered", detail: `${oauthStartupHint(authStub.tls)}. In this doctor run {issuer} was ${authStub.issuer}${vars.ca_file ? ` and {ca_file} ${vars.ca_file}` : ""}` });
     }
   }
   if (!failedLauncher && !launchFailed) {
@@ -513,7 +538,14 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
       });
       for (const step of diagnoseStartup(err.message, stderr, { command: spec.command, timeoutMs: limitMs, usesDsn: usesDb })) items.push({ id: "advice", status: "info", title: step });
       const text = JSON.stringify(spec);
-      if (/\{bearer(?::[ab])?\}/.test(text) && /\b40[13]\b|unauthori[sz]ed|forbidden/i.test(`${err.message} ${stderr}`))
+      if (authStub && /\b40[13]\b|unauthori[sz]ed|forbidden/i.test(`${err.message} ${stderr}`))
+        items.push({
+          id: "advice",
+          status: "info",
+          title: "the server refused the token the harness's stub issuer signed (oauth.issuer: stub): it does not trust that issuer",
+          detail: `${OAUTH_TRUST_HINT}; for example server.env: { OAUTH_ISSUER: "{issuer}", OAUTH_JWKS_URL: "{jwks}", OAUTH_AUDIENCE: "{audience}" } with the names your server reads. In this doctor run {issuer} was ${authStub.issuer}${vars.ca_file ? `, {ca_file} ${vars.ca_file}` : ""} and {audience} ${vars.audience}`,
+        });
+      else if (/\{bearer(?::[ab])?\}/.test(text) && /\b40[13]\b|unauthori[sz]ed|forbidden/i.test(`${err.message} ${stderr}`))
         items.push({
           id: "advice",
           status: "info",
@@ -664,6 +696,7 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
 
   await session?.close();
   await launched?.stop();
+  await authStub?.close();
   return out;
 }
 
@@ -709,6 +742,8 @@ export interface RuleSettings {
   upstreamKind: string | null;
   scopeTools: { tool: string; param: string }[];
   scopeAllow: string[];
+  /** Round 7: `oauth.issuer` (stub or external), or null when the oauth pack is not declared. */
+  oauthIssuer?: "stub" | "external" | null;
 }
 
 /**
@@ -720,7 +755,7 @@ export function rulesOf(cfg: EffectiveConfig): RuleSettings {
   const up: { kind?: string | null } | undefined = cfg.upstream ?? tree.upstream;
   const sc: { tools?: unknown; allow?: unknown } | undefined = cfg.scope ?? tree.scope;
   const tools = Array.isArray(sc?.tools) ? (sc.tools as unknown[]).filter((t): t is { tool: string; param: string } => Boolean(t) && typeof (t as { tool?: unknown }).tool === "string" && typeof (t as { param?: unknown }).param === "string") : [];
-  return { upstreamKind: typeof up?.kind === "string" ? up.kind : null, scopeTools: tools, scopeAllow: Array.isArray(sc?.allow) ? (sc.allow as unknown[]).filter((a): a is string => typeof a === "string") : [] };
+  return { upstreamKind: typeof up?.kind === "string" ? up.kind : null, scopeTools: tools, scopeAllow: Array.isArray(sc?.allow) ? (sc.allow as unknown[]).filter((a): a is string => typeof a === "string") : [], oauthIssuer: oauthSettings(cfg).issuer };
 }
 
 export interface AutoAdded {
@@ -736,7 +771,7 @@ export interface AutoAdded {
  * The auto-add rule, one function so `run` and `doctor` cannot drift (seam S11): a declaration puts its pack in the pack list when the
  * list was not chosen by the user (the shipped default or a profile), and is reported as skipped when it was:
  * `custom` for a probe with a check; `scope` when `scope.tools` is not empty; `upstream` when `upstream.kind` is set; `sql-guard` when it
- * is set and a SQL tool exists. The text of `notes` and `skipped` is what the run prints.
+ * is set and a SQL tool exists; `oauth` when `oauth.issuer` is set (round 7). The text of `notes` and `skipped` is what the run prints.
  */
 export function autoAddedPacks(cfg: EffectiveConfig, o: { hasSqlTool: boolean }): AutoAdded {
   const rules = rulesOf(cfg);
@@ -748,6 +783,7 @@ export function autoAddedPacks(cfg: EffectiveConfig, o: { hasSqlTool: boolean })
   if (rules.scopeTools.length) declared.push({ id: "scope" as PackId, note: "scope was declared in the config, so the pack is included" });
   if (rules.upstreamKind && o.hasSqlTool) declared.push({ id: "sql-guard" as PackId, note: "sql-guard was declared in the config, so the pack is included" });
   if (rules.upstreamKind) declared.push({ id: "upstream" as PackId, note: "upstream was declared in the config, so the pack is included" });
+  if (rules.oauthIssuer) declared.push({ id: "oauth" as PackId, note: "oauth was declared in the config, so the pack is included" });
   const out: AutoAdded = { packs: [], notes: [], skipped: [] };
   for (const d of declared) {
     if (listed.has(d.id)) continue;
@@ -886,6 +922,16 @@ export function suggestionsAfterRun(checks: readonly { id: string; verdict: stri
       why: `${sql.id} is inconclusive: ${sql.summary} The control statement did not reach the upstream stub: give a statement the server accepts`,
       config: 'checks:\n  sql-guard-statements:\n    control_sql: "SELECT * FROM <an identifier in scope.allow> WHERE \'sm-{token}\' = \'sm-{token}\'"\n',
       flags: [],
+    });
+  // Round 7: the oauth token checks could not be judged because the server refused the control token from the stub issuer.
+  const oauthControl = checks.find((c) => (c.id === "oauth-token-forgery" || c.id === "oauth-claims" || c.id === "oauth-scope" || c.id === "upstream-token-passthrough") && c.verdict === "inconclusive" && /does not trust the harness issuer|trust the harness's issuer/.test(c.summary));
+  if (oauthControl)
+    out.push({
+      id: "oauth:trust",
+      kind: "oauth",
+      why: `${oauthControl.id} is inconclusive: the server refused the control token the harness's stub issuer signed. ${OAUTH_TRUST_HINT}`,
+      config: 'server:\n  env:\n    # the names your server reads its issuer, JWKS URL and audience from:\n    OAUTH_ISSUER: "{issuer}"\n    OAUTH_JWKS_URL: "{jwks}"\n    OAUTH_AUDIENCE: "{audience}"\noauth:\n  issuer: stub\n',
+      flags: ["--oauth"],
     });
   if (checks.some((c) => c.verdict === "inconclusive" && /no valid call/i.test(c.summary)))
     out.push({

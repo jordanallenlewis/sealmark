@@ -118,7 +118,8 @@ describe("round 6: the lists that must agree", () => {
 
   it("the probe placeholders are the configuration's harness placeholders minus {token}, {upstream} and {bearer...} (seam S4)", () => {
     // A probe may not address the stub or choose a credential by placeholder: `identity:` chooses the caller.
-    const withheld = new Set(["token", "upstream", "bearer", "bearer:a", "bearer:b"]);
+    // The stub issuer's {issuer}, {jwks}, {audience} and {ca_file} configure the server and are refused in probe args too.
+    const withheld = new Set(["token", "upstream", "bearer", "bearer:a", "bearer:b", "issuer", "jwks", "audience", "ca_file"]);
     assert.deepEqual([...PROBE_HARNESS_KEYS].sort(), CONFIG_HARNESS_KEYS.filter((k) => !withheld.has(k)).sort());
   });
 });

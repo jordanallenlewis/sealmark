@@ -154,7 +154,7 @@ describe("describe --json", () => {
     assert.equal(wire.checks.find((c) => c.id === "secret-echo")!.severity, "critical");
     assert.equal(wire.checks.find((c) => c.id === "audit")!.severity, "advisory");
     for (const p of wire.packs) assert.deepEqual(p.checks, wire.checks.filter((c) => c.pack === p.id).map((c) => c.id));
-    assert.equal(wire.checks.length, 56, "45 through round 5, plus the 11 round 6 candidates");
+    assert.equal(wire.checks.length, 62, "45 through round 5, plus the 11 round 6 candidates and the 6 round 7 candidates");
     assert.equal(wire.packs.find((p) => p.id === "core")!.standard, true);
     assert.equal(wire.packs.find((p) => p.id === "exec")!.standard, false, "exec is opt-in");
     assert.ok(STANDARD_PACKS.every((id) => wire.packs.some((p) => p.id === id)));
@@ -173,6 +173,7 @@ describe("describe --json", () => {
       "refusal-quality",
       "instructions-hygiene",
       "db-privilege",
+      "http-session-binding",
       "scope-escape",
       "sql-guard-statements",
       "sql-guard-references",
@@ -182,6 +183,11 @@ describe("describe --json", () => {
       "log-secret",
       "upstream-error-leak",
       "upstream-slow",
+      "upstream-token-passthrough",
+      "oauth-token-forgery",
+      "oauth-claims",
+      "oauth-discovery",
+      "oauth-scope",
     ]);
     const retries = wire.configKeys.find((k) => k.path === "retries.call")!;
     assert.equal(retries.deprecated, true);

@@ -76,6 +76,7 @@ const PLACEHOLDERS: { name: string; meaning: string }[] = [
   { name: "{token}", meaning: "A fresh random token per probe (probes only)." },
   { name: "{upstream}", meaning: "Base URL of the harness's upstream stub, the backend the server under test talks to (server.command, args, env, url, headers and server.files; needs upstream.kind: http). Refused in probes' arguments." },
   { name: "{bearer} {bearer:a} {bearer:b}", meaning: "A per-run credential for one of two identities the harness mints (identities.a and identities.b override them); {bearer} is {bearer:a}. Written in server.headers, for example Authorization: Bearer {bearer}. Refused in probes' arguments: a probe picks the caller with identity: a | b | none." },
+  { name: "{issuer} {jwks} {audience} {ca_file}", meaning: "Round 7, with oauth.issuer: stub (--oauth): the URL of the harness's stub OAuth issuer (https by default, D41), its JWKS URL, the audience (RFC 8707 resource) its tokens carry, which is server.url unless oauth.audience says otherwise, and the PEM file of the throwaway CA its certificate chains to (empty with oauth.tls: false). The harness sets SSL_CERT_FILE, REQUESTS_CA_BUNDLE and NODE_EXTRA_CA_CERTS for the server unless server.env does. Written where the server reads its issuer, JWKS URL and audience (server.env or server.args); {bearer:a} and {bearer:b} are then access tokens the stub signed. Refused in probes' arguments." },
   { name: "{upstream_token}", meaning: "Inside a scripted upstream reply only (upstream.responses[].reply and a probe's upstream.reply): a fresh sm-row-<hex> per occurrence, recorded so expect.upstream.token_echoed can tell whether a returned row reached the response." },
   { name: "{matrix.<name>}", meaning: "Inside a probe's args: the current value of that key of the probe's matrix; the probe is expanded into one probe per combination." },
   { name: "${VAR}  ${VAR:-default}", meaning: "A reference to an environment variable, filled in from your real environment when the run starts. Never written to reports. A variable that is not set and has no :-default is a configuration error (exit 2) in server.url, args, env and headers; write ${VAR:-} to allow empty." },
@@ -192,7 +193,7 @@ const bool: JS = { type: "boolean" };
 const strs: JS = { type: "array", items: str };
 const obj = (properties: Record<string, JS>, required: string[] = Object.keys(properties)): JS => ({ type: "object", properties, required, additionalProperties: false });
 const arr = (items: JS): JS => ({ type: "array", items });
-const VERIFIED = ["db-state", "response", "protocol", "static", "fs-observer", "listener", "process", "http", "upstream", "log"];
+const VERIFIED = ["db-state", "response", "protocol", "static", "fs-observer", "listener", "process", "http", "upstream", "log", "authserver"];
 
 /** JSON Schema (draft-07 subset) for `sealmark describe --json`. */
 export const DESCRIBE_SCHEMA: JS = {

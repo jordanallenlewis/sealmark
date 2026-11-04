@@ -166,10 +166,12 @@ describe("r6 agent: the auto-add rule (one function for run and doctor, seam S11
   });
 
   it("rulesOf reads the typed fields when the config layer has them, and the raw tree otherwise", () => {
-    assert.deepEqual(rulesOf(cfg({ value: declared })), { upstreamKind: "http", scopeTools: [{ tool: "describe_table", param: "table" }], scopeAllow: ["sales.public."] });
+    assert.deepEqual(rulesOf(cfg({ value: declared })), { upstreamKind: "http", scopeTools: [{ tool: "describe_table", param: "table" }], scopeAllow: ["sales.public."], oauthIssuer: null });
     const typed = { ...cfg(), upstream: { kind: "http" }, scope: { tools: [{ tool: "a", param: "b" }, { nope: 1 }], allow: ["x", 3] } } as unknown as EffectiveConfig;
-    assert.deepEqual(rulesOf(typed), { upstreamKind: "http", scopeTools: [{ tool: "a", param: "b" }], scopeAllow: ["x"] });
-    assert.deepEqual(rulesOf(cfg()), { upstreamKind: null, scopeTools: [], scopeAllow: [] });
+    assert.deepEqual(rulesOf(typed), { upstreamKind: "http", scopeTools: [{ tool: "a", param: "b" }], scopeAllow: ["x"], oauthIssuer: null });
+    assert.deepEqual(rulesOf(cfg()), { upstreamKind: null, scopeTools: [], scopeAllow: [], oauthIssuer: null });
+    // Round 7: oauth.issuer, typed or from the raw tree.
+    assert.equal(rulesOf(cfg({ value: { oauth: { issuer: "stub" } } })).oauthIssuer, "stub");
   });
 });
 

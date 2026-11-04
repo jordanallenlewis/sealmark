@@ -361,15 +361,18 @@ const MATRIX_REF = /\{matrix\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const MAX_EXPANSION = 100;
 const BEARER_REF = /\{bearer(?::[ab])?\}/;
 const UPSTREAM_REF = /\{upstream\}/;
+/** Round 7: the stub issuer's placeholders configure the server, not a probe. */
+const OAUTH_REF = /\{(?:issuer|jwks|audience|ca_file)\}/;
 const MINT = "{upstream_token}";
 const isScalar = (v: unknown): v is string | number | boolean => ["string", "number", "boolean"].includes(typeof v);
 
-/** `{bearer}`, `{upstream}` and `{upstream_token}` have no meaning in a probe's arguments; each refusal says what to write instead. */
+/** `{bearer}`, `{upstream}`, `{upstream_token}` and the round 7 `{issuer}`, `{jwks}`, `{audience}` have no meaning in a probe's arguments; each refusal says what to write instead. */
 function refusedPlaceholders(v: unknown): string[] {
   const out: string[] = [];
   for (const [where, s] of strings(v)) {
     if (BEARER_REF.test(s)) out.push(`${where}: {bearer} cannot be used in a probe's arguments: the identity is chosen with \`identity: a | b | none\` and the harness sends its token as the header you wrote in server.headers`);
     if (UPSTREAM_REF.test(s)) out.push(`${where}: {upstream} cannot be used in a probe's arguments: the stub is the server's backend, not a probe target`);
+    if (OAUTH_REF.test(s)) out.push(`${where}: {issuer}, {jwks}, {audience} and {ca_file} cannot be used in a probe's arguments: they tell the server which issuer to trust (server.env or server.args); the oauth pack sends the tokens itself`);
     if (s.includes(MINT)) out.push(`${where}: {upstream_token} exists only inside the reply of \`upstream.reply\` (and of upstream.responses); it is minted by the stub, not sent by a probe`);
   }
   return out;

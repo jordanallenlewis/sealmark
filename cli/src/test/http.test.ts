@@ -67,6 +67,7 @@ describe("http pack on toy servers", { timeout: 120_000 }, () => {
       "http-auth": "pass",
       "http-protocol-version": "pass",
       "http-session": "pass",
+      "http-session-binding": "na",
       "http-cors": "pass",
       "http-bind": "pass",
       "http-tls": "na",
@@ -82,6 +83,7 @@ describe("http pack on toy servers", { timeout: 120_000 }, () => {
       "http-auth": "na",
       "http-protocol-version": "fail",
       "http-session": "fail",
+      "http-session-binding": "na",
       "http-cors": "fail",
       "http-bind": "pass",
       "http-tls": "na",
@@ -98,6 +100,7 @@ describe("http pack on toy servers", { timeout: 120_000 }, () => {
       "http-auth": "pass",
       "http-protocol-version": "pass",
       "http-session": "pass",
+      "http-session-binding": "na",
       "http-cors": "fail",
       "http-bind": "pass",
       "http-tls": "na",
@@ -147,14 +150,15 @@ describe("http pack on toy servers", { timeout: 120_000 }, () => {
   it("every emitted check id is documented; scopes start with server or environment; bind and tls are advisory", () => {
     const docs = describeHttp();
     const ids = docs.map((d) => d.id);
-    assert.deepEqual(ids, ["http-origin", "http-auth", "http-protocol-version", "http-session", "http-cors", "http-bind", "http-tls"]);
+    assert.deepEqual(ids, ["http-origin", "http-auth", "http-protocol-version", "http-session", "http-session-binding", "http-cors", "http-bind", "http-tls"]);
     assert.equal(new Set(ids).size, ids.length);
     for (const d of docs) {
       assert.equal(d.pack, "http");
       assert.match(d.scope, /^(server|environment)/);
       assert.ok(d.probes.length > 0);
     }
-    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["http-bind", "http-tls"]);
+    // http-session-binding is a round 7 candidate: advisory in this standard pack.
+    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["http-session-binding", "http-bind", "http-tls"]);
     assert.deepEqual(docs.filter((d) => d.critical).map((d) => d.id), ["http-origin"]);
     for (const c of Object.values(out).flat()) assert.ok(ids.includes(c.id));
   });

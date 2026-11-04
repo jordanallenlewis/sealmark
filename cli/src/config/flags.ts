@@ -117,6 +117,9 @@ export const FLAG_DEFS: readonly FlagDef[] = [
   { name: "scope-deny", path: "scope.deny", kind: "list", description: "An identifier the server must refuse even inside the allow list. Repeat for several." },
   { name: "identity-a", path: "identities.a", kind: "string", description: "Token for caller A ({bearer}, {bearer:a}) when the server validates tokens it did not issue. Put a CI secret in single quotes, --identity-a '${TOKEN_A}', and Sealmark reads it from the environment." },
   { name: "identity-b", path: "identities.b", kind: "string", description: "Token for caller B ({bearer:b}); must differ from --identity-a. Single-quote a CI secret as for --identity-a." },
+  // Round 7: the stub authorization server and the oauth candidate pack.
+  { name: "oauth", path: "oauth.issuer", kind: "boolean", set: "stub", description: "Start the harness's stub OAuth issuer (oauth.issuer: stub): {issuer}, {jwks} and {audience} name it for the server's own settings, and the harness sends tokens it signed as Authorization: Bearer. The oauth pack then checks that forged, expired, wrong-audience and wrong-issuer tokens are refused." },
+  { name: "oauth-tls", path: "oauth.tls", kind: "boolean", negatable: true, description: "--no-oauth-tls serves the stub issuer over plain http instead of https (the default, with a throwaway CA in {ca_file}). Only for a server that cannot be given a CA file; a hardened server refuses an http trust root." },
   { name: "server", path: "run.server", kind: "string", description: "Entry of `servers` to use (run also accepts `all`). init: the imported servers to write, as comma separated names, client/name, or all." },
 ];
 

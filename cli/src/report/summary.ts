@@ -39,7 +39,8 @@ const RANK: Record<string, number> = { fail: 0, part: 1, inconclusive: 2, pass: 
 const MAX_NOT_COVERED = 8;
 
 /** Evidence codes that say what the server did (the deciding observation), as against the control call that leads a result. */
-const DECIDING_CODE = /(\.none|\.executed|\.leaked|\.attempted|\.created|-hit|-escape|-injection)$/;
+// Round 7: a token that was served, an attacker URL the server fetched, a token passed to the upstream.
+const DECIDING_CODE = /(\.none|\.executed|\.leaked|\.attempted|\.created|-hit|-escape|-injection|-served|-fetch|\.token-passthrough)$/;
 const CONTROL_CODE = /(^|\.)control(\.|$)|\.skipped$/;
 
 /** The line to cite for a check: the observation that decided it, else the first line that is not a control call, else the first line. */

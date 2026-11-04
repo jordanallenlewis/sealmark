@@ -240,8 +240,8 @@ Used in `command`, `args`, `env` values, `url`, and `headers` values:
 Every report starts with a header that says which it is:
 
 ```
-sealmark 0.2.2 · methodology 0.3-draft · STANDARD · my-server 1.0.0
-sealmark 0.2.2 · methodology 0.3-draft · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
+sealmark 0.3.0 · methodology 0.3-draft · STANDARD · my-server 1.0.0
+sealmark 0.3.0 · methodology 0.3-draft · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
   timeout_probe_sec: standard 10, effective 2  (flag --timeout-probe)
   packs: standard ["core","db",...], effective ["core"]  (flag --pack)
 ```
@@ -251,7 +251,7 @@ A run is STANDARD only if every setting that affects a grade equals the standard
 ## Reading the report
 
 ```
-sealmark 0.2.2 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
+sealmark 0.3.0 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
 
 server: node dist/toy/server.js --mode nosql
 env:
@@ -398,7 +398,7 @@ sealmark:
   script:
     # first, install your server with its own "- ..." line (for example: - npm ci)
     - >
-      npx -y sealmark@0.2.2 run
+      npx -y sealmark@0.3.0 run
       --start "my-server --port 8000"
       --url http://localhost:8000/mcp
   artifacts:
@@ -435,7 +435,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - run: npm ci                  # installs your server
-      - run: npx -y sealmark@0.2.2 run --profile ci --baseline sealmark-baseline.json
+      - run: npx -y sealmark@0.3.0 run --profile ci --baseline sealmark-baseline.json
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: sealmark-report, path: sealmark-report/ }

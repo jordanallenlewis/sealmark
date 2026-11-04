@@ -28,7 +28,7 @@ jobs:
 Two things must be true before this works for anyone:
 
 - The repository must be public. A `uses:` line cannot reach an action in a private repository of another owner.
-- The pinned `version` input (default `0.2.2`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`; whenever the owner bumps the CLI version label (for methodology 0.3-draft the recommended label is `0.3.0`), the `version` default in `action.yml` and the `0.2.1` in the table below move with it.
+- The pinned `version` input (default `0.3.0`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`; whenever the owner bumps the CLI version label (for methodology 0.3-draft the recommended label is `0.3.0`), the `version` default in `action.yml` and the `0.2.1` in the table below move with it.
 
 With neither `start`, `url` nor `config` the action exits 2 and says `sealmark action: set start and url (or config)`.
 
@@ -38,7 +38,7 @@ All inputs are optional. A flag the CLI has a default for keeps that default whe
 
 | Input | Default | What it does |
 |---|---|---|
-| `version` | `0.2.2` | Sealmark version run through `npx -y sealmark@<version>`. |
+| `version` | `0.3.0` | Sealmark version run through `npx -y sealmark@<version>`. |
 | `start` | | Command that starts the server (`--start`). |
 | `url` | | URL of a Streamable HTTP server (`--url`). |
 | `config` | | Path to a `sealmark.yaml` (`--config`). |

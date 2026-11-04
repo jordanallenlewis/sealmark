@@ -30,6 +30,13 @@ export const CANDIDATE_CHECKS = [
   "log-secret",
   "upstream-error-leak",
   "upstream-slow",
+  // Round 7: the oauth candidate pack, token passthrough, and session binding (advisory in the standard http pack).
+  "oauth-token-forgery",
+  "oauth-claims",
+  "oauth-discovery",
+  "oauth-scope",
+  "upstream-token-passthrough",
+  "http-session-binding",
 ] as const;
 
 /** The only keys a replayed report may carry: every locked leaf, `packs`, and the custom-run record (`custom_checks`, `plugins`; see checkReplay). */

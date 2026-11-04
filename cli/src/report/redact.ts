@@ -1,4 +1,5 @@
 import { isAbsolute, relative, sep } from "node:path";
+import { JWT_SHAPE } from "../oauth.js";
 import type { RunResult } from "../types.js";
 
 /**
@@ -138,8 +139,14 @@ const AFTER = "(?![\\w-])";
  */
 const AFTER_NAME = "(?:(?=-(?:abs|rel|\\d+)(?![\\w-]))|(?![\\w-]))";
 const SM_BEFORE = "(?:(?<![A-Za-z0-9])|(?<=%[0-9A-Fa-f]{2}))";
-const smRule = (body: string, to: string): [RegExp, string] => [new RegExp(`${SM_BEFORE}${body}${AFTER_NAME}`, "g"), to];
-const TOKEN_RULES: [RegExp, string][] = [
+/**
+ * A rule is [pattern, replacement, needle?]. The needle is a literal every match contains, so a string without it is skipped without running the
+ * pattern: reports pass every string through every rule, and long server-controlled text must stay linear and cheap (summary.test.ts).
+ */
+type TokenRule = [RegExp, string, string?];
+// The literal start of an sm- rule's body (`sm-kid-`, `ann-sm-`): every match contains it.
+const smRule = (body: string, to: string): TokenRule => [new RegExp(`${SM_BEFORE}${body}${AFTER_NAME}`, "g"), to, /^[A-Za-z0-9_-]+/.exec(body)?.[0]];
+const TOKEN_RULES: TokenRule[] = [
   smRule("ann-sm-[0-9a-f]{12}", "ann-{token}"),
   smRule("sm-sm-[0-9a-f]{12}", "{token}"),
   smRule("sm-ctl-[0-9a-f]{8,12}", "{ctl}"),
@@ -157,6 +164,12 @@ const TOKEN_RULES: [RegExp, string][] = [
   smRule("sm-bearer-b-[0-9a-f]{12}", "{bearer:b}"),
   smRule("sm-row-[0-9a-f]{8}", "{row}"),
   smRule("sm-upstream-err-[0-9a-f]{8,16}", "{upstream_error}"),
+  // Round 7: a token the stub authorization server minted (or any JWT a server echoed) is a credential: never printed. The kids are per run.
+  [JWT_SHAPE, "{jwt}", "eyJ"],
+  smRule("sm-kid-[0-9a-f]{12}", "{kid}"),
+  smRule("sm-attacker-kid-[0-9a-f]{12}", "{attacker_kid}"),
+  smRule("sm-jti-[0-9a-f]{16}", "{jti}"),
+  smRule("sm-garbage-[0-9a-f]{12}", "{garbage_token}"),
   // Round 6 corpus names. sql-guard marks each statement with `sm_<8 hex>` (identifier), `'sm-<8 hex>'` (literal), `sm_ctl_<8 hex>` and
   // `outside_sm_<8 hex>`; the scope corpus builds `sm_control_<6 hex>` and names ending `_sm<6 hex>` (upper-cased by the case family).
   [/(?<![0-9A-Za-z])(sm_control_)[0-9a-f]{6}(?![0-9A-Za-z])/gi, "$1{token}"],
@@ -176,16 +189,17 @@ const TOKEN_RULES: [RegExp, string][] = [
  * `[::ffff:7f00:1]`, `localhost`, a name that resolves there): it is the run's own ephemeral number, so any `<host>:<port>`
  * is rewritten, and so is the percent-encoded `<host>%3A<port>` of a URL passed as a query value.
  */
-export function makeRunNormaliser(ports: number | null | undefined | { listenerPort?: number | null; upstreamPort?: number | null }): (s: string) => string {
-  const { listenerPort, upstreamPort } = typeof ports === "object" && ports !== null ? ports : { listenerPort: ports, upstreamPort: undefined };
+export function makeRunNormaliser(ports: number | null | undefined | { listenerPort?: number | null; upstreamPort?: number | null; issuerPort?: number | null }): (s: string) => string {
+  const { listenerPort, upstreamPort, issuerPort } = typeof ports === "object" && ports !== null ? ports : { listenerPort: ports, upstreamPort: undefined, issuerPort: undefined };
   const portRule = (n: number | null | undefined, to: string): [RegExp, string][] =>
     n ? [[new RegExp(`(?<=[\\w\\]]):${n}(?!\\d)`, "g"), `:${to}`], [new RegExp(`(?<=[\\w\\]])(%3[aA])${n}(?!\\d)`, "g"), `$1${to}`]] : [];
   // The second ephemeral port of a run is the upstream stub's (round 6).
-  const portRules = [...portRule(listenerPort, "{listener_port}"), ...portRule(upstreamPort, "{upstream_port}")];
+  // Round 7: the stub authorization server's port is the third.
+  const portRules = [...portRule(listenerPort, "{listener_port}"), ...portRule(upstreamPort, "{upstream_port}"), ...portRule(issuerPort, "{issuer_port}")];
   return (s) => {
     let out = s;
     for (const [re, to] of portRules) out = out.replace(re, to);
-    for (const [re, to] of TOKEN_RULES) out = out.replace(re, to);
+    for (const [re, to, needle] of TOKEN_RULES) if (!needle || out.includes(needle)) out = out.replace(re, to);
     return out;
   };
 }
@@ -250,14 +264,19 @@ export function redactResult(r: RunResult, o: RedactOptions = {}): RunResult {
   const paths = kept ? (s: string) => s : makePathRewriter(r.sandbox?.dir);
   const upstream = (r as { upstream?: { url?: unknown } }).upstream;
   const upstreamPort = typeof upstream?.url === "string" ? Number(/:(\d+)\/?$/.exec(upstream.url)?.[1]) || null : null;
-  const run = kept ? (s: string) => s : makeRunNormaliser({ listenerPort: r.sandbox?.listenerPort, upstreamPort });
+  const oauth = (r as { oauth?: { issuer?: unknown; mode?: unknown } }).oauth;
+  const issuerPort = oauth?.mode === "stub" && typeof oauth.issuer === "string" ? Number(/:(\d+)\/?$/.exec(oauth.issuer)?.[1]) || null : null;
+  const run = kept ? (s: string) => s : makeRunNormaliser({ listenerPort: r.sandbox?.listenerPort, upstreamPort, issuerPort });
   const checks = new Set<object>(Array.isArray(r.checks) ? r.checks : []);
   const out = redactDeep(r, (s) => (KEPT.test(s) ? s : scrub(run(paths(s)))), (k, parent) => (CHECK_NAME_FIELDS.has(k) && checks.has(parent)) || (k === "startedAt" && parent === r));
   const finished = out.config?.path ? { ...out, config: { ...out.config, path: relativeConfigPath(out.config.path) } } : out;
   // The stub's address names this run's ephemeral port: the report carries the placeholder (the sentence in types.ts: `url` printed as "{upstream}").
   const shown = (finished as { upstream?: { url?: unknown } }).upstream;
-  if (!kept && shown && typeof shown.url === "string") return { ...finished, upstream: { ...shown, url: "{upstream}" } } as RunResult;
-  return finished;
+  const withStub = !kept && shown && typeof shown.url === "string" ? ({ ...finished, upstream: { ...shown, url: "{upstream}" } } as RunResult) : finished;
+  // The same for the stub authorization server (round 7): its issuer URL names this run's port.
+  const issued = (withStub as { oauth?: { issuer?: unknown; mode?: unknown } }).oauth;
+  if (!kept && issued?.mode === "stub" && typeof issued.issuer === "string") return { ...withStub, oauth: { ...issued, issuer: "{issuer}" } } as RunResult;
+  return withStub;
 }
 
 /**

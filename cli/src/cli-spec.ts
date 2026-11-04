@@ -74,12 +74,12 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
   },
   {
     name: "run",
-    usage: 'run [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--upstream] [--scope-tool <tool=param>]... [--scope-allow <id>]... [--scope-deny <id>]... [--identity-a <token>] [--identity-b <token>] [--soft-fail] [--config <path>] [--profile <name>] [--pack <id>]... [--server <name|all>] [--fail-under A-F] [--format <fmt>] [--out <file>] [--active] [--no-sandbox] [--replay <report.json>]',
+    usage: 'run [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--upstream] [--oauth] [--no-oauth-tls] [--scope-tool <tool=param>]... [--scope-allow <id>]... [--scope-deny <id>]... [--identity-a <token>] [--identity-b <token>] [--soft-fail] [--config <path>] [--profile <name>] [--pack <id>]... [--server <name|all>] [--fail-under A-F] [--format <fmt>] [--out <file>] [--active] [--no-sandbox] [--replay <report.json>]',
     summary: "Grade the configured server(s) and print the report.",
   },
   {
     name: "doctor",
-    usage: 'doctor [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--upstream] [--scope-tool <tool=param>]... [--scope-allow <id>]... [--scope-deny <id>]... [--identity-a <token>] [--identity-b <token>] [--config <path>] [--profile <name>] [--server <name>] [--json]',
+    usage: 'doctor [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--upstream] [--oauth] [--no-oauth-tls] [--scope-tool <tool=param>]... [--scope-allow <id>]... [--scope-deny <id>]... [--identity-a <token>] [--identity-b <token>] [--config <path>] [--profile <name>] [--server <name>] [--json]',
     summary: "Check that sealmark can start your server: tools on PATH, the launcher, the sandbox, initialize and tools/list, the classification and why each pack would run or not.",
   },
   {
@@ -147,11 +147,13 @@ function commandsFor(name: string): string[] {
   if (name === "name") return ["run", "doctor", "init", "config show"];
   // Round 6 (config-report package adds the flags to FLAG_DEFS): they describe the server's setup, so doctor and init --probes read them too.
   if (name === "upstream" || name.startsWith("scope-") || name.startsWith("identity-")) return ["run", "doctor", "init", "config show"];
+  // Round 7: --oauth starts the stub issuer the server trusts, so doctor and init --probes need it to start the server too.
+  if (name === "oauth" || name === "oauth-tls") return ["run", "doctor", "init", "config show"];
   return ["run", "config show"];
 }
 
 /** Flags `init` accepts only together with --probes (they select and start the server): without it they are a usage error, not silently ignored. */
-export const INIT_PROBES_ONLY = new Set(["json", "url", "start", "header", "bearer", "start-timeout", "name", "connect-timeout", "sandbox", "sandbox-dir", "upstream", "write", "scope-tool", "scope-allow", "scope-deny", "identity-a", "identity-b"]);
+export const INIT_PROBES_ONLY = new Set(["json", "url", "start", "header", "bearer", "start-timeout", "name", "connect-timeout", "sandbox", "sandbox-dir", "upstream", "oauth", "oauth-tls", "write", "scope-tool", "scope-allow", "scope-deny", "identity-a", "identity-b"]);
 
 const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },

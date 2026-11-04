@@ -167,6 +167,19 @@ export const REMEDIATION: Record<string, string> = {
     "Make every refusal say what to do next: name the tool or the identifiers that are allowed (for example call list_tables), say whether retrying can help, and avoid a bare forbidden. This check is advisory and never changes a letter; checks.refusal-quality.patterns sets the words that count as routing.",
   "instructions-hygiene":
     "Keep the server's instructions in step with its tools: remove names of tools the server does not offer and any text left over from another product or prompt (what checks.instructions-hygiene.deny matches). This check is advisory.",
+  // Round 7.
+  "oauth-token-forgery":
+    "Verify every token's signature with a key from the issuer you configured, and only with an algorithm you allow (for example RS256 only): refuse alg none in any spelling, an empty or wrong signature, a payload that no longer matches its signature, a key not in the issuer's key set, and HS256 tokens on an RSA key (never use the public key as an HMAC secret). Take keys from the configured JWKS URL only, never from a jku, x5u or kid in the token header, and never use kid as a file path or a query. If the check is inconclusive, the server did not trust the harness's issuer: set its issuer to {issuer}, its JWKS URL to {jwks} and its audience to {audience}.",
+  "oauth-claims":
+    "After the signature, check the claims on every request: exp is present and in the future, nbf (when present) is not in the future, iss is exactly the issuer you configured, and aud names this server's own resource URI (RFC 8707); refuse a token minted for another resource even by the same issuer. Allow at most a small clock skew (a minute).",
+  "oauth-discovery":
+    "Answer a request without a valid token with 401 and WWW-Authenticate: Bearer resource_metadata=\"<url>\", and serve that RFC 9728 document (also at /.well-known/oauth-protected-resource<path>): JSON with resource set to this server's URL exactly (https, no trailing slash) and authorization_servers listing the issuer clients should use. Check the token before anything else, on every method (tools/list, tools/call, resources/list, prompts/list), with or without a session.",
+  "oauth-scope":
+    "Read the token from the Authorization header only, never from an access_token query parameter (URLs end up in logs). Refuse a token that lacks a scope the request needs, preferably with 403 and WWW-Authenticate: Bearer error=\"insufficient_scope\", scope=\"<needed>\". The scopes the check expects are oauth.scopes.",
+  "upstream-token-passthrough":
+    "Never forward the token a client sent you to an upstream API: it was issued for this server (its audience), and passing it on lets the upstream act as the client and hides who called. Use a credential of the server's own for the upstream, or exchange the client's token for one issued to the upstream (a token exchange or on-behalf-of grant), and keep the original token out of headers, query strings and bodies you send onwards.",
+  "http-session-binding":
+    "Bind each session to the identity that opened it: on every request, authenticate the token first, then check that its subject is the one the session was created for, and refuse otherwise. A session id is not a credential: a request with a valid session id and no token, or another caller's token, must be refused. This check is advisory in the http pack (a round 7 candidate).",
 };
 
 const SCORING: Record<DescribedCheck["severity"], string> = {

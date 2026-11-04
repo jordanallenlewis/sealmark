@@ -488,7 +488,7 @@ export async function startScopedToy(mode: ScopedToyMode, opts: ScopedToyOptions
   };
 
   // ---- http ----
-  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: Server }>();
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; caller: string; server: Server }>();
   const hostOk = (host: string | undefined) => host === `127.0.0.1:${port}` || host === `localhost:${port}` || host === `[::1]:${port}`;
   const originOk = (origin: string) => origin === `http://127.0.0.1:${port}` || origin === `http://localhost:${port}` || origin === "http://127.0.0.1" || origin === "http://localhost";
 
@@ -521,11 +521,13 @@ export async function startScopedToy(mode: ScopedToyMode, opts: ScopedToyOptions
     if (sid) {
       const s = sessions.get(sid);
       if (!s) return jsonError(res, 404, -32001, "Session not found");
+      // Round 7: every mode binds a session to the credential that opened it (http-session-binding); no mode of this toy is about sessions.
+      if (s.caller !== (auth ?? "")) return jsonError(res, 403, -32001, "Forbidden: the session belongs to another caller");
       return s.transport.handleRequest(req, res, body);
     }
     if (req.method === "POST" && isInitializeRequest(body)) {
       const server = makeServer();
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => void sessions.set(id, { transport, server }) });
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => void sessions.set(id, { transport, server, caller: auth ?? "" }) });
       transport.onclose = () => {
         if (transport.sessionId) sessions.delete(transport.sessionId);
       };

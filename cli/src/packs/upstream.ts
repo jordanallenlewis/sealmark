@@ -7,6 +7,7 @@
 import type { McpSession } from "../mcp.js";
 import { planContext, runProbe, validateProbes, type PlannedProbe, type ProbeOutcome } from "../probes.js";
 import { NO_UPSTREAM_STUB, NO_VALID_CALL } from "./shared.js";
+import { OAUTH_TRUST_HINT } from "../oauth.js";
 import type { CheckDoc, CheckResult, Evidence, IdentityName, Pack, PackApplies, PackCtx, PackId, UpstreamRequest, Verdict } from "../types.js";
 
 const PACK: PackId = "upstream";
@@ -25,7 +26,12 @@ const META = {
   log: { id: "log-secret", label: "The server's log never contains a caller's credential", critical: false },
   errorLeak: { id: "upstream-error-leak", label: "Upstream error bodies are not relayed with the credential", critical: false },
   slow: { id: "upstream-slow", label: "A slow upstream does not hang the server", critical: false },
+  passthrough: { id: "upstream-token-passthrough", label: "The caller's access token is never passed to the upstream", critical: true },
 } satisfies Record<string, Meta>;
+
+/** Round 7: with the stub issuer on, the identities are access tokens issued for this server, and forwarding them is token passthrough. */
+const OAUTH_MODE = "oauth.issuer is stub: the callers' tokens are access tokens the harness's issuer minted for this server ({audience}), so forwarding them is token passthrough, which upstream-token-passthrough grades; per-caller passthrough is graded only for opaque tokens (without --oauth)";
+const NEEDS_OAUTH = "needs the harness's stub issuer (--oauth): only a token the harness issued for this server is known to be bound to it; without it, what reaches the upstream is graded by upstream-credential";
 
 export function describe(): CheckDoc[] {
   const keys = (id: string, extra: string[] = []) => [`checks.${id}.enabled`, `checks.${id}.severity`, ...extra, "upstream.kind", "upstream.credential_header", "identities.a", "identities.b"];
@@ -81,6 +87,16 @@ export function describe(): CheckDoc[] {
       falsePositive: "A server that answers an error within expected_sec + 2 s passes. A server that needs longer than that to give up is a fail by the bound the config states.",
       falseNegative: "Only the first call that reaches the stub is held; a tool with a different backend timeout is not seen.",
       configKeys: keys(META.slow.id, ["checks.upstream-slow.expected_sec", "timeout_probe_sec"]),
+    }),
+    mk(META.passthrough, {
+      verifiedBy: ["upstream"],
+      probes: [
+        { id: "identity-a", text: "every valid call as identity a, whose token is an access token the harness's issuer minted for this server ({audience}); every header, query and body the upstream stub receives is searched for the token and for its signature", kind: "corpus" },
+        { id: "identity-b", text: "the same calls as identity b", kind: "corpus" },
+      ],
+      falsePositive: "None known: the token is minted for this run and audience-bound to the server under test, and the MCP authorization specification forbids passing it to an upstream API (the server must obtain its own token for the upstream).",
+      falseNegative: "Only the harness's valid calls are observed; a tool the harness did not call can still forward the token. A token transformed beyond recognition (re-encoded, split) is not seen; its signature segment alone is searched for as well.",
+      configKeys: keys(META.passthrough.id, ["oauth.issuer"]),
     }),
   ];
 }
@@ -233,7 +249,8 @@ async function run(ctx: PackCtx): Promise<CheckResult[]> {
   let legB: Leg | undefined;
   let legN: Leg | undefined;
   const mark0Log = log?.mark();
-  if (!problem && !identNa && identity && (!off(META.credential) || !off(META.echo))) {
+  const oauthStub = Boolean(ctx.authServer);
+  if (!problem && !identNa && identity && (!off(META.credential) || !off(META.echo) || (oauthStub && !off(META.passthrough)))) {
     legA = await runLeg(ctx, () => identity.openAs("a"), probes);
     legB = await runLeg(ctx, () => identity.openAs("b"), probes);
     legN = await runLeg(ctx, () => identity.openAs(null), probes);
@@ -245,6 +262,7 @@ async function run(ctx: PackCtx): Promise<CheckResult[]> {
       const m = META.credential;
       if (off(m)) return res(m, "na", "disabled by config");
       if (identNa) return res(m, "na", identNa);
+      if (oauthStub) return res(m, "na", OAUTH_MODE);
       if (problem) return res(m, "inconclusive", problem);
       const evidence: Evidence[] = [];
       const fails: string[] = [];
@@ -327,6 +345,39 @@ async function run(ctx: PackCtx): Promise<CheckResult[]> {
       if (hits.length) return res(m, "fail", [...new Set(hits)].join("; "), evidence);
       if (!replies) return res(m, "inconclusive", legA!.openError ? "no reply was received: the server refused the minted token; set identities.a and identities.b to real tokens" : NO_VALID_CALL, []);
       return res(m, "pass", `${replies} reply(ies) to calls as identities a and b held neither token`, [{ probe: "search the replies for the minted tokens", outcome: `${replies} reply(ies) searched, none held a token`, verifiedBy: "response", code: "upstream.no-echo" }]);
+    })(),
+  );
+
+  // ---- upstream-token-passthrough (round 7): the caller's access token must never reach the upstream ----
+  out.push(
+    (() => {
+      const m = META.passthrough;
+      if (off(m)) return res(m, "na", "disabled by config");
+      if (!oauthStub) return res(m, "na", NEEDS_OAUTH);
+      if (identNa) return res(m, "na", identNa);
+      if (problem) return res(m, "inconclusive", problem);
+      const evidence: Evidence[] = [];
+      const hits: string[] = [];
+      let reached = 0;
+      for (const [name, leg] of [["a", legA!], ["b", legB!]] as const) {
+        const token = bearer(name);
+        // The whole token, and its signature segment alone (a server that re-wraps the token keeps the signature).
+        const sig = token.split(".")[2] ?? "";
+        const needles = [token, ...(sig.length >= 32 ? [sig] : [])];
+        const hay = (r: UpstreamRequest): string => `${r.path}${r.query}\n${Object.values(r.headers).join("\n")}\n${r.body}`;
+        const found = leg.requests.filter((r) => needles.some((n) => hay(r).includes(n) || hay(r).includes(encodeURIComponent(n))));
+        reached += leg.requests.length;
+        if (leg.openError) evidence.push({ probe: `open the server as identity ${name}`, outcome: `refused: ${leg.openError}`, verifiedBy: "response", code: "upstream.identity-refused" });
+        const where = found.length ? [...new Set(found.flatMap((r) => [...Object.entries(r.headers).filter(([, v]) => needles.some((n) => v.includes(n))).map(([k]) => `header ${k}`), ...(needles.some((n) => r.query.includes(n) || r.query.includes(encodeURIComponent(n))) ? ["query"] : []), ...(needles.some((n) => r.body.includes(n)) ? ["body"] : [])]))] : [];
+        evidence.push({ probe: `valid calls as identity ${name} ({bearer:${name}}, an access token for {audience}), ${leg.outcomes.length} call(s)`, outcome: `${leg.requests.length} request(s) reached the upstream${found.length ? `; ${found.length} carried the caller's token (${where.join(", ")})` : "; none carried the caller's token"}`, verifiedBy: "upstream", code: found.length ? "upstream.token-passthrough" : "upstream.own-credential" });
+        if (found.length) hits.push(`identity ${name}'s access token reached the upstream in ${where.join(", ")}`);
+      }
+      if (hits.length) return res(m, "fail", `${hits.join("; ")}: token passthrough (the MCP authorization specification forbids passing the token a client sent to an upstream API; the server must use a credential of its own for the upstream)`, evidence);
+      if (!reached) {
+        const refused = legA!.openError || legB!.openError || (legA!.allRefused && legB!.allRefused);
+        return res(m, "inconclusive", refused ? `every call was refused, so nothing reached the upstream: ${OAUTH_TRUST_HINT}` : "no valid call reached the upstream; check that the server uses {upstream} and that a probes: entry calls a tool that queries it", evidence);
+      }
+      return res(m, "pass", `${reached} request(s) reached the upstream and none carried the caller's access token`, evidence);
     })(),
   );
 

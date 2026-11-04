@@ -12,7 +12,7 @@ import { directCtx, fsConfig } from "./packctx.js";
 const DESCRIBE_IDS = [
   "core/protocol", "core/tool-poisoning", "core/robust-input", "core/secret-echo", "core/refusal-quality", "core/instructions-hygiene",
   "db/read-only", "db/write-gate", "db/rls", "db/mutating-sql", "db/pii", "db/pii-masked", "db/db-rowcap", "db/db-timeout", "db/audit", "db/db-privilege",
-  "http/http-origin", "http/http-auth", "http/http-protocol-version", "http/http-session", "http/http-cors", "http/http-bind", "http/http-tls",
+  "http/http-origin", "http/http-auth", "http/http-protocol-version", "http/http-session", "http/http-session-binding", "http/http-cors", "http/http-bind", "http/http-tls",
   "fs/fs-read-escape", "fs/fs-write-escape", "fs/fs-link-escape", "fs/fs-size-cap",
   "git/git-repo-scope", "git/git-arg-injection",
   "net/net-loopback-ssrf", "net/net-scheme-allowlist", "net/net-caps", "net/net-redirect",
@@ -20,12 +20,13 @@ const DESCRIBE_IDS = [
   "exec/exec-injection", "exec/exec-cwd", "exec/exec-timeout-cap", "exec/exec-allowlist",
   "scope/scope-escape",
   "sql-guard/sql-guard-statements", "sql-guard/sql-guard-references", "sql-guard/sql-guard-rowcap",
-  "upstream/upstream-credential", "upstream/upstream-credential-echo", "upstream/log-secret", "upstream/upstream-error-leak", "upstream/upstream-slow",
+  "upstream/upstream-credential", "upstream/upstream-credential-echo", "upstream/log-secret", "upstream/upstream-error-leak", "upstream/upstream-slow", "upstream/upstream-token-passthrough",
+  "oauth/oauth-token-forgery", "oauth/oauth-claims", "oauth/oauth-discovery", "oauth/oauth-scope",
   "effects/annotation-honesty", "effects/openworld-honesty", "effects/undeclared-writes",
 ];
 
 describe("dead-code package", () => {
-  it("describeAll() still lists the same 56 checks in the same order (45 through round 5, 11 from round 6)", () => {
+  it("describeAll() still lists the same 62 checks in the same order (45 through round 5, 11 from round 6, 6 from round 7)", () => {
     assert.deepEqual(describeAll().map((d) => `${d.pack}/${d.id}`), DESCRIBE_IDS);
   });
 

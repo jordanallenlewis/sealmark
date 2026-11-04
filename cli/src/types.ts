@@ -6,11 +6,11 @@ import type { PgTarget, Role } from "./seed.js";
 export type Verdict = "pass" | "part" | "fail" | "inconclusive" | "na";
 
 /** Built-in pack ids. `plugin:<name>` ids come from `plugins:` in the config. */
-export const BUILTIN_PACKS = ["core", "db", "fs", "net", "git", "exec", "http", "effects", "custom", "sqlite", "scope", "sql-guard", "upstream"] as const;
+export const BUILTIN_PACKS = ["core", "db", "fs", "net", "git", "exec", "http", "effects", "custom", "sqlite", "scope", "sql-guard", "upstream", "oauth"] as const;
 export type BuiltinPackId = (typeof BUILTIN_PACKS)[number];
 export type PackId = BuiltinPackId | `plugin:${string}`;
 /** Packs outside the standard that run when their declaration exists; scored, labelled, off the badge. */
-export const CANDIDATE_PACKS: readonly PackId[] = ["scope", "sql-guard", "upstream"];
+export const CANDIDATE_PACKS: readonly PackId[] = ["scope", "sql-guard", "upstream", "oauth"];
 export type Letter = "A" | "B" | "C" | "D" | "F";
 
 /**
@@ -19,8 +19,9 @@ export type Letter = "A" | "B" | "C" | "D" | "F";
  * listener: the loopback listener saw (or did not see) the probe's token. process: the server's process tree.
  * http: a raw HTTP exchange with the server endpoint. response: the tool response text. protocol: MCP framing. static: metadata.
  * upstream: what the harness-owned upstream stub received. log: what the launched server printed.
+ * authserver: what the harness-owned stub authorization server received (a key-set fetch, an attacker URL fetch).
  */
-export type VerifiedBy = "db-state" | "response" | "protocol" | "static" | "fs-observer" | "listener" | "process" | "http" | "upstream" | "log";
+export type VerifiedBy = "db-state" | "response" | "protocol" | "static" | "fs-observer" | "listener" | "process" | "http" | "upstream" | "log" | "authserver";
 
 // --- observers (round 6, the design notes) ------------------------------------------
 
@@ -100,11 +101,75 @@ export interface IdentityAccess {
   openAs(identity: IdentityName | null): Promise<McpSession>;
 }
 
+// --- the stub authorization server -----------------------------
+
+/** A request the harness-owned stub authorization server received. Header names lower-cased; bodies are not kept. */
+export interface AuthServerRequest {
+  /** 1-based, monotonic for the run. */
+  id: number;
+  at: number;
+  method: string;
+  /** Pathname only. */
+  path: string;
+  /** "" or "?a=b". */
+  query: string;
+  headers: Record<string, string>;
+}
+
+/** How `AuthServerStub.mint` signs (or forges) a token. The default is a well-formed RS256 token signed with the stub's published key. */
+export interface AuthServerMintOptions {
+  /** The algorithm used to sign. `none` leaves the signature empty; `HS256` keys an HMAC with `hmacSecret`. */
+  alg?: "RS256" | "HS256" | "none";
+  /** The `alg` header value as written (`None`, `NONE`), when it differs from `alg`. */
+  algName?: string;
+  /** HMAC key for `alg: HS256` (the stub's public key bytes, an empty key, a guessed key). */
+  hmacSecret?: string | Buffer;
+  /** Header fields merged over the default `{ alg, typ: "at+jwt", kid }` (`jku`, `x5u`, a hostile `kid`). */
+  header?: Record<string, unknown>;
+  omitKid?: boolean;
+  /** Which key signs: the published one (default), a key not in the key set (same kid), or the attacker key published at /attacker/jwks. */
+  key?: "stub" | "untrusted" | "attacker";
+  /** `strip`: `h.p.` (empty signature); `strip-dot`: `h.p`; `random`: random bytes in place of the signature. */
+  signature?: "keep" | "strip" | "strip-dot" | "random";
+  /** For `alg: none`: false leaves out the trailing dot (`h.p`). */
+  trailingDot?: boolean;
+  /** Claims replaced in the payload after signing; the header and signature stay those of the original token. */
+  tamper?: Record<string, unknown>;
+}
+
+export interface AuthServerStub {
+  /** http://127.0.0.1:<port> (no trailing slash); the value of {issuer}. */
+  readonly issuer: string;
+  /** `<issuer>/jwks`; the value of {jwks}. */
+  readonly jwksUri: string;
+  /** Key sets the server must never fetch: an attacker key set and an attacker "certificate" URL, both on the stub (recorded). */
+  readonly attackerJwksUri: string;
+  readonly attackerX5uUri: string;
+  readonly port: number;
+  /** Round 7, true when the stub serves https; `caPem` is then the throwaway CA the server must trust (written to {ca_file}). */
+  readonly tls: boolean;
+  readonly caPem?: string;
+  /** The attacker certificate chain served at /attacker/x5u (leaf for the attacker key, then its CA). */
+  readonly attackerChainPem: string;
+  /** The `kid` of the published signing key, and of the attacker key. */
+  readonly kid: string;
+  readonly attackerKid: string;
+  /** The published public key as SPKI PEM and as JWK JSON: the bytes an HS256/RS256 confusion probe keys its HMAC with. */
+  readonly publicPem: string;
+  readonly publicJwkJson: string;
+  verifyKey(): import("node:crypto").KeyObject;
+  /** A compact JWS over `claims`, signed (or forged) as `opts` says. */
+  mint(claims: Record<string, unknown>, opts?: AuthServerMintOptions): string;
+  mark(): number;
+  requests(since?: number): AuthServerRequest[];
+  close(): Promise<void>;
+}
+
 /** What the agent surface suggests adding to the configuration (produced by doctor and run, rendered by the report). */
 export interface Suggestion {
   /** Stable, e.g. "scope:describe_table". */
   id: string;
-  kind: "scope" | "sql-guard" | "upstream" | "identity" | "probes" | "sandbox";
+  kind: "scope" | "sql-guard" | "upstream" | "identity" | "probes" | "sandbox" | "oauth";
   why: string;
   /** YAML to paste into sealmark.yaml. */
   config: string;
@@ -361,6 +426,10 @@ export interface PackCtx {
   identity?: IdentityAccess;
   /** The harness placeholder values of this run (sandbox, listener, upstream, bearer:a, bearer:b ...). Optional so hand-built contexts keep compiling; readers use `ctx.vars ?? {}`. */
   vars?: Record<string, string>;
+  /** Round 7: the harness-owned stub authorization server, when `oauth.issuer: stub` (the identities are then tokens it minted). */
+  authServer?: AuthServerStub;
+  /** Round 7: the audience (RFC 8707 resource) the run's tokens carry, and the scopes the control token carries. Set whenever `oauth.issuer` is set. */
+  oauth?: { issuer: "stub" | "external"; audience: string; scopes: string[]; clientId: string; controlRejected?: { status: number; detail: string } };
 }
 
 /**
@@ -437,8 +506,10 @@ export interface RunResult {
   probes?: { calls: unknown[]; custom: unknown[] };
   /** The upstream stub of this run (kind http only). `url` is printed as "{upstream}" under redaction. */
   upstream?: { kind: "http"; requests: number; scripted: number; url: string };
-  /** Which identities the run used; names only, never values. */
-  identities?: { names: IdentityName[]; source: "minted" | "config" };
+  /** Which identities the run used; names only, never values. `stub`: tokens the round 7 stub authorization server minted. */
+  identities?: { names: IdentityName[]; source: "minted" | "config" | "stub" };
+  /** Round 7: the oauth declaration of this run. `issuer` is printed as "{issuer}" under redaction for the stub; never a token. */
+  oauth?: { issuer: string; mode: "stub" | "external"; tls?: boolean; audience: string; scopes: string[]; requests: number; jwksFetched: boolean };
   /** What to add to the configuration, re-evaluated after the run. */
   suggestions?: Suggestion[];
   /** Set only when the run failed before grading (addendum item 19). */

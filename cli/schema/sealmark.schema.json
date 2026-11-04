@@ -1106,6 +1106,41 @@
           },
           "additionalProperties": false
         },
+        "http-session-binding": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run http-session-binding. false reports it as n/a (\"disabled by config\") so it stays visible. http-session-binding is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how http-session-binding counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. http-session-binding is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "http-tls": {
           "type": "object",
           "properties": {
@@ -1531,6 +1566,146 @@
               "x-sealmark": {
                 "since": "0.2-draft",
                 "standardLocked": true,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth-claims": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run oauth-claims. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-claims is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how oauth-claims counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-claims is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth-discovery": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run oauth-discovery. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-discovery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how oauth-discovery counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-discovery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth-scope": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run oauth-scope. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-scope is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how oauth-scope counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-scope is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth-token-forgery": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run oauth-token-forgery. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-token-forgery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how oauth-token-forgery counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-token-forgery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
                 "mergeable": false,
                 "secret": false,
                 "flagOnly": false
@@ -2753,6 +2928,41 @@
           },
           "additionalProperties": false
         },
+        "upstream-token-passthrough": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run upstream-token-passthrough. false reports it as n/a (\"disabled by config\") so it stays visible. upstream-token-passthrough is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how upstream-token-passthrough counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. upstream-token-passthrough is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "write-gate": {
           "type": "object",
           "properties": {
@@ -2961,6 +3171,84 @@
             "since": "0.2-draft",
             "standardLocked": false,
             "mergeable": true,
+            "secret": false,
+            "flagOnly": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "oauth": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "The audience (RFC 8707 resource) the stub's tokens carry and the protected-resource metadata must name; the value of {audience}. null uses server.url in canonical form (no fragment, no trailing slash).",
+          "default": null,
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
+        "client_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The client_id claim of the tokens the stub mints.",
+          "default": "sealmark",
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
+        "issuer": {
+          "enum": [
+            "stub",
+            "external",
+            null
+          ],
+          "description": "Which OAuth issuer the server under test trusts. stub starts the harness's own authorization server on loopback (flag --oauth): {issuer} and {jwks} name it, and the caller identities ({bearer}, {bearer:a}, {bearer:b}) become tokens it signed for {audience}, sent as Authorization: Bearer. Point the server's issuer, JWKS URL and audience at those placeholders in server.env or server.args. external declares a server that trusts its own issuer: only the checks that need no harness-signed token run (oauth-discovery). null declares nothing.",
+          "default": null,
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Scopes the server requires: the control token carries them, and oauth-scope sends a token without them, which must be refused. Empty skips the scope probe.",
+          "default": [],
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
+        "tls": {
+          "type": "boolean",
+          "description": "Serve the stub issuer over https with a throwaway CA made for this run: {issuer} and {jwks} are https:// URLs and {ca_file} is the CA's PEM file. The harness also sets SSL_CERT_FILE, REQUESTS_CA_BUNDLE and NODE_EXTRA_CA_CERTS for the server it starts (to a bundle of that CA and the public roots) unless server.env sets them. false serves plain http, which a hardened server refuses as a trust root (flag --no-oauth-tls).",
+          "default": true,
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
             "secret": false,
             "flagOnly": false
           }
@@ -5864,6 +6152,41 @@
               },
               "additionalProperties": false
             },
+            "http-session-binding": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run http-session-binding. false reports it as n/a (\"disabled by config\") so it stays visible. http-session-binding is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how http-session-binding counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. http-session-binding is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
             "http-tls": {
               "type": "object",
               "properties": {
@@ -6289,6 +6612,146 @@
                   "x-sealmark": {
                     "since": "0.2-draft",
                     "standardLocked": true,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "oauth-claims": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run oauth-claims. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-claims is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how oauth-claims counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-claims is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "oauth-discovery": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run oauth-discovery. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-discovery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how oauth-discovery counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-discovery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "oauth-scope": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run oauth-scope. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-scope is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how oauth-scope counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-scope is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "oauth-token-forgery": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run oauth-token-forgery. false reports it as n/a (\"disabled by config\") so it stays visible. oauth-token-forgery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how oauth-token-forgery counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. oauth-token-forgery is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
                     "mergeable": false,
                     "secret": false,
                     "flagOnly": false
@@ -7511,6 +7974,41 @@
               },
               "additionalProperties": false
             },
+            "upstream-token-passthrough": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run upstream-token-passthrough. false reports it as n/a (\"disabled by config\") so it stays visible. upstream-token-passthrough is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how upstream-token-passthrough counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. upstream-token-passthrough is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
             "write-gate": {
               "type": "object",
               "properties": {
@@ -7702,6 +8200,84 @@
                 "since": "0.2-draft",
                 "standardLocked": false,
                 "mergeable": true,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "oauth": {
+          "type": "object",
+          "properties": {
+            "audience": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "The audience (RFC 8707 resource) the stub's tokens carry and the protected-resource metadata must name; the value of {audience}. null uses server.url in canonical form (no fragment, no trailing slash).",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "client_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The client_id claim of the tokens the stub mints.",
+              "default": "sealmark",
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "issuer": {
+              "enum": [
+                "stub",
+                "external",
+                null
+              ],
+              "description": "Which OAuth issuer the server under test trusts. stub starts the harness's own authorization server on loopback (flag --oauth): {issuer} and {jwks} name it, and the caller identities ({bearer}, {bearer:a}, {bearer:b}) become tokens it signed for {audience}, sent as Authorization: Bearer. Point the server's issuer, JWKS URL and audience at those placeholders in server.env or server.args. external declares a server that trusts its own issuer: only the checks that need no harness-signed token run (oauth-discovery). null declares nothing.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Scopes the server requires: the control token carries them, and oauth-scope sends a token without them, which must be refused. Empty skips the scope probe.",
+              "default": [],
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "tls": {
+              "type": "boolean",
+              "description": "Serve the stub issuer over https with a throwaway CA made for this run: {issuer} and {jwks} are https:// URLs and {ca_file} is the CA's PEM file. The harness also sets SSL_CERT_FILE, REQUESTS_CA_BUNDLE and NODE_EXTRA_CA_CERTS for the server it starts (to a bundle of that CA and the public roots) unless server.env sets them. false serves plain http, which a hardened server refuses as a trust root (flag --no-oauth-tls).",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
                 "secret": false,
                 "flagOnly": false
               }

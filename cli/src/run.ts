@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { rootCertificates } from "node:tls";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,6 +12,8 @@ import { leftoverDirs, pendingPids, startEmbedded, stopAll, type EmbeddedHandle 
 import { createLogObserver } from "./observers/log.js";
 import { createProcessObserver, terminatePids } from "./observers/process.js";
 import { startUpstream } from "./observers/upstream.js";
+import { startAuthServer } from "./observers/authserver.js";
+import { CA_ENV_VARS, OAUTH_SUB, OAUTH_TRUST_HINT, accessTokenClaims, canonicalResource, oauthSettings, oauthStartupHint, withOauthHeader } from "./oauth.js";
 import { normVersion, versionWarnings } from "./resolve.js";
 import { gradePack } from "./grade.js";
 import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, usesBearer, type OpenOptions } from "./mcp.js";
@@ -28,7 +31,7 @@ import { ROLES, ROLE_PASSWORD, SEED_DB, SEED_VERSION, deprovision, parseDsn, pro
 import { ensureSqliteFixture } from "./sqlite-fixtures.js";
 import { stageFiles } from "./staged-files.js";
 import { captureSurface } from "./surface.js";
-import { CANDIDATE_PACKS, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
+import { CANDIDATE_PACKS, type AuthServerStub, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
 
 export interface RunOptions {
   /** The single-server view of the configuration. Used to build an EffectiveConfig when `effective` is absent (tests, library callers). */
@@ -111,6 +114,27 @@ async function unauthorizedHint(spec: { url?: string; headers?: Record<string, s
 }
 
 const EMPTY_CTX: TemplateCtx = { vars: {}, dsns: {} };
+
+/**
+ * Round 7: after the discovery session failed on a server configured with the stub issuer, ask the URL once with the token it was sent. A 401
+ * or 403 means the server refused the stub's token (it does not trust the issuer): the run goes on so the oauth pack can say so.
+ */
+async function tokenRefused(spec: { url?: string; headers?: Record<string, string> }, ctx: TemplateCtx): Promise<{ status: number; detail: string } | undefined> {
+  if (!spec.url) return undefined;
+  try {
+    const r = await fetch(expandHarness(spec.url, ctx), {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...Object.fromEntries(Object.entries(spec.headers ?? {}).map(([k, v]) => [k, expandHarness(v, ctx)])) },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "sealmark", version: "0.2" } } }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const www = r.headers.get("www-authenticate") ?? "";
+    await r.body?.cancel().catch(() => {});
+    return r.status === 401 || r.status === 403 ? { status: r.status, detail: www.slice(0, 200) } : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Packs whose probes read or write the sandbox directories: they mean nothing when the server is not confined to it. */
 const NEEDS_SANDBOX = new Set<PackId>(["fs", "git", "exec", "effects", "sqlite"]);
@@ -313,7 +337,11 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
   const t0 = Date.now();
   const startedAt = new Date().toISOString();
   const legacy = !opts.effective;
-  const eff = opts.effective ?? legacyEffectiveConfig(opts);
+  const eff0 = opts.effective ?? legacyEffectiveConfig(opts);
+  // Round 7: with oauth.issuer: stub the identities travel as Authorization: Bearer {bearer} unless a header already carries them (the
+  // configuration layer does this too; repeated here, idempotently, for a configuration built by hand).
+  const oauthCfg = oauthSettings(eff0);
+  const eff: EffectiveConfig = oauthCfg.issuer === "stub" && eff0.server.url ? { ...eff0, server: withOauthHeader(eff0.server, oauthCfg) } : eff0;
   const { log } = opts;
   const spec = eff.server;
   const transport = spec.url ? "http" : "stdio";
@@ -379,6 +407,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
   let launched: LaunchedServer | undefined;
   /** The upstream stub (round 6), closed right after the sessions and the launched server. */
   let upstreamStub: UpstreamStub | undefined;
+  /** The stub authorization server (round 7), closed with the upstream stub. */
+  let authStub: AuthServerStub | undefined;
   let destroyed: DestroyResult | undefined;
   let cleaned: Promise<void> | undefined;
   // Work that was abandoned (a pack past its timeout) can still be starting a server when the run ends; such a session is closed on arrival.
@@ -414,6 +444,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
       await Promise.all(sessions.map((s) => s.close()));
       if (launched) await launched.stop();
       if (upstreamStub) await within(upstreamStub.close(), 3000);
+      if (authStub) await within(authStub.close(), 3000);
       if (interrupted) {
         // A server a session was still starting is in no list above: sweep our children, then give the work that was running a moment to see
         // its sessions closed and unwind, before its files go. Every embedded Postgres the registry knows is left alone here: it is shut
@@ -545,12 +576,39 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
       }
       log(`the upstream stub is listening on ${upstreamStub.url}`);
     }
+    // ---- the stub authorization server (round 7): the issuer the server is configured to trust through {issuer} and {jwks} ----
+    const audience = oauthCfg.issuer ? (oauthCfg.audience ?? (spec.url ? canonicalResource(expandHarness(spec.url, { vars: {}, dsns: {}, env: eff.env } as TemplateCtx)) : "")) : "";
+    if (oauthCfg.issuer === "stub" && transport === "http") {
+      const reachable = listenerReachable(spec, eff.env);
+      if (reachable.ok === false) {
+        throw new ConfigError(`the server runs on ${reachable.host}, which cannot reach the harness's stub issuer (it listens on this machine's loopback only). Run the server on this machine, or use oauth.issuer: external.`);
+      }
+      try {
+        authStub = await startAuthServer({ log, tls: oauthCfg.tls });
+      } catch (e) {
+        throw new HarnessError(`could not start the stub issuer: ${(e as Error).message}`);
+      }
+      log(`the stub issuer is listening on ${authStub.issuer}`);
+    }
+    // D41: the throwaway CA of the https stub, as {ca_file} (the CA alone, for a server's own CA setting) and as a bundle with the public roots
+    // (for SSL_CERT_FILE and friends, which replace a stack's whole trust store). Both live in the sandbox directory, outside every watched
+    // subdirectory, and go with it.
+    const caFile = authStub?.caPem ? join(sb.dir, "oauth-ca.pem") : "";
+    const caBundle = authStub?.caPem ? join(sb.dir, "oauth-ca-bundle.pem") : "";
+    if (authStub?.caPem) {
+      writeFileSync(caFile, authStub.caPem, { mode: 0o600 });
+      writeFileSync(caBundle, [authStub.caPem, ...rootCertificates].join("\n"), { mode: 0o600 });
+    }
     // ---- identities (round 6): two caller identities for {bearer:a} / {bearer:b}; `identities.*` overrides the minted values ----
+    // Round 7: with the stub issuer, the identities are access tokens it signed for {audience} (sub sm-sub-a and sm-sub-b), valid for 2 hours.
     const idCfg = identitySettings(eff);
-    const bearers: Record<IdentityName, string> = {
-      a: idCfg.a || `sm-bearer-a-${randomBytes(6).toString("hex")}`,
-      b: idCfg.b || `sm-bearer-b-${randomBytes(6).toString("hex")}`,
-    };
+    const stubToken = (sub: string) => authStub!.mint(accessTokenClaims({ issuer: authStub!.issuer, audience, scopes: oauthCfg.scopes, clientId: oauthCfg.client_id }, sub, {}, undefined, 7200));
+    const bearers: Record<IdentityName, string> = authStub
+      ? { a: stubToken(OAUTH_SUB.a), b: stubToken(OAUTH_SUB.b) }
+      : {
+          a: idCfg.a || `sm-bearer-a-${randomBytes(6).toString("hex")}`,
+          b: idCfg.b || `sm-bearer-b-${randomBytes(6).toString("hex")}`,
+        };
     const bearerUsed = BEARER_USED.test(specJson);
     // ---- the server's log: what a launched server prints, and the stderr of stdio sessions ----
     const logObs = transport === "stdio" || selfStarted ? createLogObserver() : undefined;
@@ -567,6 +625,9 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
       bearer: bearers.a,
       "bearer:a": bearers.a,
       "bearer:b": bearers.b,
+      ...(authStub ? { issuer: authStub.issuer, jwks: authStub.jwksUri } : {}),
+      ...(oauthCfg.issuer ? { audience } : {}),
+      ...(authStub ? { ca_file: caFile } : {}),
     });
     // Real servers open their repository or database file at startup, and the discovery session starts before any pack does,
     // so the fixtures a config refers to must exist before the first open().
@@ -613,7 +674,9 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         throw new ConfigError("database placeholders ({dsn}, {host}, {password}, ...) cannot be used when Sealmark starts the server with --start and --url: the server is started once, outside the database roles. Use a stdio server (no --url) for the db pack, or remove the placeholders.");
       }
       const lctx = baseCtx();
-      const launchEnv = { ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expandHarness(v, lctx)])), ...extraEnv };
+      // D41: a server Sealmark starts with the https stub issuer trusts its CA through the usual variables, unless server.env sets them.
+      const caEnv: Record<string, string> = caBundle ? Object.fromEntries(CA_ENV_VARS.filter((k) => !Object.keys(spec.env ?? {}).some((e) => e.toUpperCase() === k)).map((k) => [k, caBundle])) : {};
+      const launchEnv = { ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expandHarness(v, lctx)])), ...extraEnv };
       try {
         // `launched` is set as soon as the process exists (onStarted), so a Ctrl+C or SIGTERM while still waiting can stop it.
         await launchServer({
@@ -632,7 +695,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           },
         });
       } catch (e) {
-        throw new HarnessError(e instanceof LaunchError ? e.message : `could not start the server: ${(e as Error).message}`);
+        // Round 7: a hardened server refuses to start when it does not like its trust root; say what --oauth gave it.
+        throw new HarnessError(e instanceof LaunchError ? e.message : `could not start the server: ${(e as Error).message}`, authStub ? { hint: oauthStartupHint(authStub.tls) } : {});
       }
     }
     /** Where and how the server process starts: the sandbox root with a scrubbed environment, or a throwaway cwd with everything inherited. */
@@ -684,10 +748,16 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     log("starting the server under test");
     let session: McpSession | undefined;
     let protocolChecks: CheckResult[] | undefined;
+    /** Round 7: the server refused the token the stub issuer signed, so no tool can be reached; the oauth pack still runs and says why. */
+    let oauthRejected: { status: number; detail: string } | undefined;
     try {
       session = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv });
     } catch (e) {
-      if (e instanceof ProtocolViolation) protocolChecks = protocolFailure(e.message);
+      const rejected = e instanceof SessionError && authStub && transport === "http" ? await tokenRefused(spec, baseCtx()) : undefined;
+      if (rejected) {
+        oauthRejected = rejected;
+        log(`the server refused the token the stub issuer signed (HTTP ${rejected.status}); ${OAUTH_TRUST_HINT}`);
+      } else if (e instanceof ProtocolViolation) protocolChecks = protocolFailure(e.message);
       else if (e instanceof SessionError) {
         const hint = placeholders && !db ? " The config uses {dsn}-style placeholders but no database was started (--no-embedded without --pg), so they were empty." : "";
         const auth = transport === "http" ? await unauthorizedHint(spec, baseCtx()) : undefined;
@@ -699,6 +769,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
 
     const tools = session?.tools ?? [];
     const warnings: string[] = [...eff.warnings, ...packNotes];
+    if (oauthRejected) warnings.push(`the server refused the token the harness's stub issuer signed (HTTP ${oauthRejected.status}), so its tools could not be listed and only the oauth pack ran; ${OAUTH_TRUST_HINT}`);
     const notCovered: string[] = [];
     let sqlTools: SqlTool[] = [];
     let sqlSkipped: { tool: string; reason: string }[] = [];
@@ -863,7 +934,9 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
 
     const reach = listenerReachable(spec, eff.env);
     const gate = (id: PackId): string | undefined => {
-      if (!session) return "the server's tool list could not be read";
+      if (id === "oauth" && transport !== "http") return "the oauth pack grades the authorization of an HTTP server (server.url); a stdio server takes its credentials from the environment";
+      // The oauth pack needs no tool list: when the server refused the stub's token it runs, and its control says why (inconclusive).
+      if (!session && !(id === "oauth" && oauthRejected)) return oauthRejected ? `the server refused the token the harness's stub issuer signed, so its tool list could not be read; ${OAUTH_TRUST_HINT}` : "the server's tool list could not be read";
       if (id === "exec" && !active) return "the exec pack runs only with --active";
       if (NEEDS_SANDBOX.has(id) && !sandboxOn) return transport === "http" && !selfStarted ? "the server is already running (HTTP), so it cannot be started inside the sandbox" : "the sandbox is off (--no-sandbox)";
       if (NEEDS_HARNESS_START.has(id) && transport !== "stdio" && !selfStarted) return "the server is already running (HTTP), so the harness cannot start it with sandbox placeholders";
@@ -951,6 +1024,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         ...(upstreamStub ? { upstream: upstreamStub } : {}),
         ...(logObs ? { serverLog: logObs } : {}),
         ...(transport === "http" && bearerUsed ? { identity: identityFor(mine, () => packOver) } : {}),
+        ...(authStub ? { authServer: authStub } : {}),
+        ...(oauthCfg.issuer ? { oauth: { issuer: oauthCfg.issuer, audience, scopes: oauthCfg.scopes, clientId: oauthCfg.client_id, ...(oauthRejected ? { controlRejected: oauthRejected } : {}) } } : {}),
       };
       const applies = pack.applies(ctx);
       if (!applies.ok) {
@@ -1028,6 +1103,10 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         packs[pack] = skip;
         continue;
       }
+      if (pack === "core" && oauthRejected) {
+        packs[pack] = { status: "inconclusive", reason: `the server refused the token the harness's stub issuer signed (HTTP ${oauthRejected.status}), so no core check could run; ${OAUTH_TRUST_HINT}` };
+        continue;
+      }
       packs[pack] = packStatus(pack, checks, isBase);
     }
 
@@ -1088,9 +1167,12 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     if (!eff.sandbox.enabled) notCovered.push("the sandbox is off (--no-sandbox): the fs, git, exec and effects packs did not run, and the server saw your real environment");
     else if (sandboxOn) notCovered.push(SANDBOX_NON_GUARANTEE);
     // The http pack grades whether a credential is required and whether the URL uses TLS, so claiming "authentication and transport security" is not covered would contradict its own checks.
-    const authTransport = transport === "http" && packs.http?.grade
-      ? "authorization semantics and token handling (the http pack only checks that the configured credential is required, and whether the URL uses TLS)"
-      : "authentication and transport security";
+    const authTransport = transport === "http" && packs.oauth?.status === "graded"
+      ? "the OAuth flow itself (authorization code, PKCE, dynamic client registration, token exchange) and per-tool authorization: the oauth pack grades the bearer tokens the server accepts and what it tells a client without one"
+      : transport === "http" && packs.http?.grade
+        ? "authorization semantics and token handling (the http pack only checks that the configured credential is required, and whether the URL uses TLS; --oauth adds the oauth candidate pack)"
+        : "authentication and transport security";
+    if (oauthRejected) notCovered.push(`no tool was reached: the server refused the token the harness's stub issuer signed (HTTP ${oauthRejected.status}); ${OAUTH_TRUST_HINT}`);
     notCovered.push("prompt injection carried in tool output (only tool metadata is scanned)", authTransport, "audit logging (not measured by these packs; only the db pack has an advisory audit check)");
     notCovered.push(...eff.notCoveredExtra);
 
@@ -1121,6 +1203,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     const badge = badgeFor(legacy ? undefined : eff.integrity, packs, checks);
     // What to add to the configuration: doctor's suggestions for this server, then what the finished checks say.
     const suggestions: Suggestion[] = [];
+    if (!session && oauthRejected) for (const s of suggestionsAfterRun(checks)) if (!suggestions.some((x) => x.id === s.id)) suggestions.push(s);
     if (session) {
       const before = suggestionsFor({ tools: visibleTools, classification, spec, transport, selfStarted, sandboxEnabled: eff.sandbox.enabled, probes: eff.probes.length, usesDsn: placeholders, sqlTools: eff.sqlTools ?? [], rules: rulesOf(eff) });
       for (const s of [...before, ...suggestionsAfterRun(checks)]) if (!suggestions.some((x) => x.id === s.id)) suggestions.push(s);
@@ -1194,7 +1277,13 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           })()
         : {}),
       ...(suggestions.length ? { suggestions } : {}),
-      ...(bearerUsed ? { identities: { names: ["a", "b"] as IdentityName[], source: idCfg.a || idCfg.b ? ("config" as const) : ("minted" as const) } } : {}),
+      ...(bearerUsed ? { identities: { names: ["a", "b"] as IdentityName[], source: authStub ? ("stub" as const) : idCfg.a || idCfg.b ? ("config" as const) : ("minted" as const) } } : {}),
+      ...(oauthCfg.issuer && transport === "http"
+        ? (() => {
+            const seen = authStub?.requests() ?? [];
+            return { oauth: { issuer: authStub?.issuer ?? "external", mode: oauthCfg.issuer, tls: Boolean(authStub?.tls), audience, scopes: [...oauthCfg.scopes], requests: seen.length, jwksFetched: seen.some((r) => r.path === "/jwks") } };
+          })()
+        : {}),
       ...(legacy ? {} : { config: { ...eff.integrity, ...(eff.configPath ? { path: eff.configPath } : {}), ...(serverLine(eff) !== undefined ? { line: serverLine(eff) } : {}) } }),
     };
   } finally {

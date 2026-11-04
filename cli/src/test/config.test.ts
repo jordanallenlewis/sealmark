@@ -110,6 +110,13 @@ describe("schema table", () => {
       "log-secret",
       "upstream-error-leak",
       "upstream-slow",
+      // round 7
+      "oauth-token-forgery",
+      "oauth-claims",
+      "oauth-discovery",
+      "oauth-scope",
+      "upstream-token-passthrough",
+      "http-session-binding",
     ]);
     for (const c of candidates) {
       for (const k of ["enabled", "severity"]) {
@@ -402,7 +409,7 @@ describe("flags", () => {
     assert.match(failure(() => load(d(), { flags: { "timeout-probe": "0" } })), /^--timeout-probe: must be greater than 0, got 0/);
     assert.match(failure(() => load(d(), { flags: { "fail-under": "Z" } })), /^--fail-under: expected one of A, B, C, D, F/);
     assert.match(failure(() => load(d(), { flags: { format: "xml" } })), /^--format: expected one of text, json/);
-    assert.match(failure(() => load(d(), { flags: { pack: ["web"] } })), /^--pack: unknown pack "web" \(use core, db, sqlite, fs, net, git, exec, http, effects, custom, scope, sql-guard, upstream\)/);
+    assert.match(failure(() => load(d(), { flags: { pack: ["web"] } })), /^--pack: unknown pack "web" \(use core, db, sqlite, fs, net, git, exec, http, effects, custom, scope, sql-guard, upstream, oauth\)/);
   });
 
   it("reads the project file named by --config", () => {

@@ -27,7 +27,7 @@ const registryDoc = (id: string): CheckDoc => describeAll().find((d) => d.id ===
 
 describe("r6 agent: describe --json", () => {
   it("lists the candidate packs, flags every pack and check with candidate / candidatePack, and still validates against its own schema", () => {
-    assert.deepEqual([...CANDIDATE_PACKS].sort(), ["scope", "sql-guard", "upstream"]);
+    assert.deepEqual([...CANDIDATE_PACKS].sort(), ["oauth", "scope", "sql-guard", "upstream"]);
     const d = JSON.parse(renderDescribe(describeAllJson())) as ReturnType<typeof describeAllJson>;
     assert.deepEqual(validateSchema(DESCRIBE_SCHEMA, d), []);
     assert.ok(d.packs.length > 0 && d.packs.every((p) => typeof p.candidate === "boolean"));
