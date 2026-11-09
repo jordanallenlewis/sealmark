@@ -22,6 +22,15 @@ What 0.3-draft changes. It is one methodology change, regenerated in one commit 
 
 The `dist/toy` directory in the npm package holds the synthetic servers the test suite uses; they are fixtures, not part of the product surface.
 
+## Quick answers
+
+- **What is Sealmark?** An open-source (Apache-2.0) command-line tool that tests how an MCP server behaves: it starts the server, calls its tools with fixed inputs, checks what happened, and grades each test suite A to F with evidence. No language model is involved.
+- **How do I run it?** `npx sealmark run --start "<command that starts your server>"` (Node 22.13 or newer).
+- **How is it different from the MCP Inspector or the official conformance framework?** Those are made by the MCP project: the Inspector is for exploring a server interactively, the conformance framework checks protocol compliance. Sealmark grades what a server's tools do (writes, SQL, files, network, secrets). They complement each other; the [comparison](https://sealmark.dev/compare/) says where Sealmark is weaker.
+- **Can I run it in CI?** Yes: `sealmark run --fail-under B` sets the exit code, and the [GitHub Action](action/README.md) uploads SARIF to code scanning.
+- **Where are real results?** [sealmark.dev/results](https://sealmark.dev/results/): one page per graded public server, each re-tested automatically.
+- **Does an A mean the server is secure?** No. It means these published probes passed with this configuration.
+
 ## Quickstart
 
 Requires Node 22.13 or newer. No Docker, no account.
