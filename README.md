@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="https://sealmark.dev"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
+</p>
+
 # Sealmark
 
 **Every row where it belongs.**
