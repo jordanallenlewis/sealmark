@@ -1,6 +1,6 @@
 {
   "name": "sealmark",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Behavioral conformance tests for MCP servers: runs a server, calls its tools with fixed probes, checks real side effects, and grades what it does.",
   "type": "module",
   "bin": {
