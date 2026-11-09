@@ -106,3 +106,40 @@ jobs:
           done
           echo "::error::sealmark@$VERSION was published but npm had not finished validating it after 45 minutes. It is NOT installable yet. Check https://www.npmjs.com/package/sealmark and your npm email; do not re-run this workflow."
           exit 1
+
+  # The website must follow the release (Jordan, 2026-11-09). The sealmark-site `release-sync` workflow pins the new version,
+  # updates the docs and changelog, deploys sealmark.dev and checks it. Here we ask it to start now (only if the optional
+  # SITE_DISPATCH_TOKEN secret exists: a token that can send repository_dispatch to sealmark-site) and then WAIT until the
+  # live site shows the new version. This job is red when the site does not follow within 60 minutes, so a green publish run
+  # means the CLI and the site agree. Without the token the site's own 30-minute poll does the update.
+  site:
+    name: sealmark.dev shows the new version
+    needs: [check, publish]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    steps:
+      - name: ask sealmark-site to ship it now (optional)
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "no SITE_DISPATCH_TOKEN: relying on the site's 30-minute poll"; exit 0; fi
+          curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/jordanallenlewis/sealmark-site/dispatches \
+            -d "{\"event_type\":\"sealmark-release\",\"client_payload\":{\"version\":\"$VERSION\"}}"
+      - name: wait for the live site
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          DEADLINE=$(( $(date +%s) + 60 * 60 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            LIVE=$(curl -fsS "https://sealmark.dev/docs/?t=$(date +%s)" | grep -o 'Sealmark [0-9][0-9.]*, methodology' | head -1 | grep -o '[0-9][0-9.]*[0-9]' | head -1 || true)
+            if [ "$LIVE" = "$VERSION" ]; then echo "sealmark.dev shows sealmark@$VERSION"; exit 0; fi
+            echo "sealmark.dev shows '${LIVE:-nothing}', waiting for $VERSION"
+            sleep 60
+          done
+          echo "::error::sealmark@$VERSION is on npm but sealmark.dev did not show it within 60 minutes. Check the release-sync workflow in jordanallenlewis/sealmark-site (Actions tab) and re-run it."
+          exit 1
