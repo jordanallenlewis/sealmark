@@ -1,0 +1,48 @@
+# Regression corpus replay: runs every server that ever exposed a Sealmark bug (cli/corpus/*.json) against the current CLI.
+# The servers are untrusted third-party code, so this runs only on a throwaway GitHub-hosted runner with NO secrets and a
+# read-only token. Weekly, after a release is published, on changes to the corpus, and by hand. Tests only; publishes nothing.
+name: corpus
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 6 * * 1'
+  workflow_run:
+    workflows: [publish]
+    types: [completed]
+  pull_request:
+    paths:
+      - "cli/corpus/**"
+      - "cli/scripts/corpus-replay.mjs"
+      - ".github/workflows/corpus.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: Build
+        working-directory: cli
+        run: npm ci && npm run build
+      - name: Replay the corpus
+        working-directory: cli
+        run: |
+          if ! ls corpus/*.json >/dev/null 2>&1; then echo "corpus is empty: nothing to replay"; exit 0; fi
+          node scripts/corpus-replay.mjs | tee "$GITHUB_STEP_SUMMARY"
