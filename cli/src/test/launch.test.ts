@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { freePort } from "./helpers.js";
-import { launchServer, LaunchError, type LaunchedServer } from "../launch.js";
+import { freePort, withFreePort } from "./helpers.js";
+import { isPortInUse, launchFailureHint, launchServer, LaunchError, PORT_IN_USE_ADVICE, type LaunchedServer } from "../launch.js";
+import { createServer as createTcpServer, type Server as TcpServer } from "node:net";
 import { createServer } from "node:http";
 
 // A throwaway HTTP server started as a child process: answers every request with 401 after `delayMs`.
@@ -130,5 +131,63 @@ describe("launchServer safety rules", { timeout: 90_000 }, () => {
     const t0 = Date.now();
     await assert.rejects(launchServer({ command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], env: {}, url: "http://sealmark-no-such-host.invalid/mcp", timeoutMs: 30_000 }), (e: Error) => e instanceof LaunchError && /ENOTFOUND|EAI_AGAIN/.test(e.message));
     assert.ok(Date.now() - t0 < 10_000, "failed fast");
+  });
+});
+
+describe("a server whose port is taken", { timeout: 60_000 }, () => {
+  it("isPortInUse knows Node's EADDRINUSE and the words other servers print for it, and nothing else", () => {
+    for (const m of [
+      "the server exited with code 1 before http://127.0.0.1:38157/mcp answered. Its last output:\ntoy oauth server: listen EADDRINUSE: address already in use 127.0.0.1:38157",
+      "OSError: [Errno 98] Address already in use",
+      "Error starting userland proxy: Bind for 0.0.0.0:8080 failed: port is already allocated",
+      "error: port is already in use",
+    ]) assert.ok(isPortInUse(m), m);
+    for (const m of ["the server exited with code 3 before http://127.0.0.1:1/mcp answered. Its last output:\nboom: missing config", "ECONNREFUSED 127.0.0.1:8080", "certificate has expired", ""]) assert.ok(!isPortInUse(m), m);
+  });
+
+  it("launchFailureHint: a taken port wins over the caller's hint; otherwise the caller's hint, or none", () => {
+    assert.equal(launchFailureHint("listen EADDRINUSE: address already in use 127.0.0.1:9", "with --oauth the server is given an https issuer"), PORT_IN_USE_ADVICE);
+    assert.equal(launchFailureHint("listen EADDRINUSE 127.0.0.1:9"), PORT_IN_USE_ADVICE);
+    assert.equal(launchFailureHint("exited with code 1: bad CA", "the oauth hint"), "the oauth hint");
+    assert.equal(launchFailureHint("exited with code 1: bad CA"), undefined);
+    assert.match(PORT_IN_USE_ADVICE, /--url/);
+  });
+
+  it("a real start on a port another process holds fails with the server's EADDRINUSE line, which isPortInUse recognizes", async () => {
+    // The holder accepts and drops every connection, so the URL never answers and the launch fails on the server's exit.
+    const holder: TcpServer = createTcpServer((sock) => sock.destroy());
+    const port = await new Promise<number>((res) => holder.listen(0, "127.0.0.1", () => res((holder.address() as { port: number }).port)));
+    try {
+      const script = `require("http").createServer().listen(${port}, "127.0.0.1");`;
+      await assert.rejects(
+        launchServer({ command: process.execPath, args: ["-e", script], env: {}, url: `http://127.0.0.1:${port}/mcp`, timeoutMs: 15_000 }),
+        (e: Error) => e instanceof LaunchError && /before .* answered/.test(e.message) && isPortInUse(e.message) && launchFailureHint(e.message) === PORT_IN_USE_ADVICE,
+      );
+    } finally {
+      await new Promise((r) => holder.close(r));
+    }
+  });
+
+  it("withFreePort tries a new port only after a taken-port failure, and throws any other failure at once", async () => {
+    const seen: number[] = [];
+    const ok = await withFreePort(async (port) => {
+      seen.push(port);
+      if (seen.length === 1) throw new Error(`listen EADDRINUSE: address already in use 127.0.0.1:${port}`);
+      return "started";
+    });
+    assert.equal(ok, "started");
+    assert.equal(seen.length, 2);
+    let calls = 0;
+    await assert.rejects(withFreePort(async () => { calls++; throw new Error("boom: missing config"); }), /boom/);
+    assert.equal(calls, 1, "a failure that is not a taken port is not retried");
+    calls = 0;
+    await assert.rejects(withFreePort(async () => { calls++; throw new Error("EADDRINUSE"); }, 2), /EADDRINUSE/);
+    assert.equal(calls, 2, "gives up after the last try");
+    calls = 0;
+    const r = await withFreePort(async () => {
+      if (++calls === 1) throw new LaunchError("something is already answering at http://127.0.0.1:9/mcp (HTTP 200) before the server was started, so it would be graded instead of yours. Stop it or use another port.");
+      return "second port";
+    });
+    assert.deepEqual([r, calls], ["second port", 2], "a port found answering before the start is retried too");
   });
 });

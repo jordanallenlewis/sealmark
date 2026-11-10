@@ -46,6 +46,16 @@ describe("a usage error is one line and a hint, not the usage dump", () => {
     }
   });
 
+  it("a mistyped command names the closest one; a made-up word gets no guess", () => {
+    const r = sealmark(["runn"]);
+    assert.equal(r.code, 2);
+    assert.match(r.err, /unknown command "runn"; did you mean "run"\?/);
+    short(r.err);
+    assert.match(sealmark(["docter"]).err, /did you mean "doctor"\?/);
+    assert.match(sealmark(["list-check"]).err, /did you mean "list-checks"\?/);
+    assert.ok(!/did you mean/.test(sealmark(["frobnicate"]).err));
+  });
+
   it("an unknown check id says what to type next", () => {
     const r = sealmark(["explain", "nonexistent"]);
     assert.equal(r.code, 2);

@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { CI_PROVIDERS, ciSnippet } from "../ci-snippet.js";
-import { CLI_COMMANDS, CLI_FLAGS, cliSpecJson, usageText } from "../cli-spec.js";
+import { CLI_COMMANDS, CLI_FLAGS, USAGE_EXAMPLES, cliSpecJson, flagsFor, matchCommand, usageText } from "../cli-spec.js";
 import { UsageError, fixtureCommand } from "../commands.js";
 import { DESCRIBE_SCHEMA, describeAllJson, renderDescribe, validateSchema } from "../describe.js";
 import { REMEDIATION, explainCheck, renderExplain } from "../explain.js";
@@ -12,6 +12,35 @@ import { CANDIDATE_CHECKS } from "../config/index.js";
 import { describeAll } from "../packs/index.js";
 
 const flag = (name: string) => CLI_FLAGS.find((f) => f.name === name)!;
+
+describe("help text examples", () => {
+  it("usage prints an examples block between usage and flags, one command and one plain line each", () => {
+    const text = usageText();
+    assert.ok(text.indexOf("\nusage:") < text.indexOf("\nexamples:") && text.indexOf("\nexamples:") < text.indexOf("\nflags:"));
+    assert.match(text, /\n {2}sealmark run --start "npx -y @modelcontextprotocol\/server-filesystem \{sandbox\}"\n {6}grade a stdio server\n/);
+    assert.match(text, /\n {2}sealmark run --url http:\/\/127\.0\.0\.1:8000\/mcp --bearer '\$\{MCP_TOKEN\}'\n/, "a CI secret is single-quoted, as --bearer's own help says");
+    assert.ok(USAGE_EXAMPLES.length >= 4 && USAGE_EXAMPLES.length <= 8, "a short list, not a manual");
+  });
+
+  it("every example names a real command, and only flags that command accepts", () => {
+    for (const e of USAGE_EXAMPLES) {
+      const firstFlag = e.argv.findIndex((a) => a.startsWith("--"));
+      const m = matchCommand(firstFlag === -1 ? e.argv : e.argv.slice(0, firstFlag));
+      assert.ok(m, `${e.argv.join(" ")}: a known command`);
+      const accepted = new Set(flagsFor(m.command.name).map((f) => f.name));
+      for (const a of e.argv.filter((x) => x.startsWith("--"))) assert.ok(accepted.has(a.slice(2)), `${a} applies to sealmark ${m.command.name}`);
+    }
+  });
+
+  it("the explain example names a check that exists, and the format example a real format", () => {
+    const ids = new Set(describeAll().map((d) => d.id));
+    for (const e of USAGE_EXAMPLES.filter((x) => x.argv[0] === "explain")) assert.ok(ids.has(e.argv[1]!), e.argv[1]);
+    for (const e of USAGE_EXAMPLES) {
+      const i = e.argv.indexOf("--format");
+      if (i !== -1) assert.ok(["text", "json", "markdown", "junit", "sarif", "summary", "badge", "shields"].includes(e.argv[i + 1]!), e.argv[i + 1]);
+    }
+  });
+});
 
 describe("help text says what the commands do", () => {
   it("HT1: --fixture advertises fs, git and sqlite, and says DuckDB is planned", () => {
