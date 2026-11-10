@@ -18,7 +18,7 @@ import { HarnessError, runHarness } from "../run.js";
 import { startCredToy, type CredToy } from "../toy/cred-r6.js";
 import { OAUTH_TOY_MODES, type OauthToyMode } from "../toy/oauth-http.js";
 import type { PackCtx, PackId, RunResult, Verdict } from "../types.js";
-import { freePort, quiet } from "./helpers.js";
+import { freePort, quiet, withFreePort } from "./helpers.js";
 import { effectiveFor } from "./packctx.js";
 
 const FIXTURE = fileURLToPath(new URL("../../src/test/fixtures/config/oauth-http.yaml", import.meta.url));
@@ -54,12 +54,14 @@ before(() => {
 after(() => rmSync(work, { recursive: true, force: true }));
 
 async function runMode(mode: OauthToyMode, edit: (yaml: string) => string = (y) => y): Promise<RunResult> {
-  const port = await freePort();
-  const dir = mkdtempSync(join(work, "run-"));
-  const text = edit(readFileSync(FIXTURE, "utf8").replaceAll("dist/toy/oauth-http.js", TOY).replaceAll("8080", String(port)).replace('"--mode", "good"', `"--mode", "${mode}"`));
-  writeFileSync(join(dir, "sealmark.yaml"), text);
-  const cfg: EffectiveConfig = loadEffectiveConfig({ cwd: dir, isolated: true, env: {} });
-  return runHarness({ config: toSealmarkConfig(cfg), effective: cfg, packs: cfg.packs as PackId[], packsExplicit: cfg.packsExplicit, timeoutProbeSec: cfg.timeoutProbeSec, log: quiet });
+  // A fresh port per start: the toy binds it after freePort() let it go, so a start that lost the port to another listener is tried again.
+  return withFreePort(async (port) => {
+    const dir = mkdtempSync(join(work, "run-"));
+    const text = edit(readFileSync(FIXTURE, "utf8").replaceAll("dist/toy/oauth-http.js", TOY).replaceAll("8080", String(port)).replace('"--mode", "good"', `"--mode", "${mode}"`));
+    writeFileSync(join(dir, "sealmark.yaml"), text);
+    const cfg: EffectiveConfig = loadEffectiveConfig({ cwd: dir, isolated: true, env: {} });
+    return runHarness({ config: toSealmarkConfig(cfg), effective: cfg, packs: cfg.packs as PackId[], packsExplicit: cfg.packsExplicit, timeoutProbeSec: cfg.timeoutProbeSec, log: quiet });
+  });
 }
 const notPassing = (r: RunResult): string[] => r.checks.filter((c) => c.verdict !== "pass" && c.verdict !== "na").map((c) => `${c.pack}/${c.id}=${c.verdict}`).sort();
 const verdictOf = (r: RunResult, id: string) => r.checks.find((c) => c.id === id);

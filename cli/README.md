@@ -2,7 +2,7 @@
 
 Behavioral conformance tests for MCP servers you run or build. Sealmark starts your server, calls its tools directly with fixed inputs (no LLM in the loop), and reports what happened with evidence for every line. A letter grade summarises each pack.
 
-**Status: methodology 0.3-draft, published on npm as `sealmark`.** Run `npx sealmark`. Checks, thresholds, and the CLI surface can still change before 1.0. Methodology 0.3-draft is not released yet: the standard hash differs from 0.2-draft, so a 0.2-draft report cannot be `--replay`ed and a 0.2-draft baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
+**Status: methodology 0.3-draft, published on npm as `sealmark`.** Run `npx sealmark`. The CLI is 1.0.0; checks and thresholds can still change before methodology 1.0. Methodology 0.3-draft is not released yet: the standard hash differs from 0.2-draft, so a 0.2-draft report cannot be `--replay`ed and a 0.2-draft baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
 
 ## What it covers, and what it does not
 
@@ -511,4 +511,4 @@ cli/src/toy/              deliberately good and bad toy MCP servers for testing 
 
 The `dist/toy` directory in the package holds the synthetic servers the test suite uses; they are fixtures, not part of the product surface. Their results say nothing about any real server.
 
-License: Apache-2.0 (see `LICENSE`). The repository is private for now.
+License: Apache-2.0 (see `LICENSE`). Source: [github.com/jordanallenlewis/sealmark](https://github.com/jordanallenlewis/sealmark).

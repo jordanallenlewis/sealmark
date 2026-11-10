@@ -2,6 +2,13 @@
   <a href="https://sealmark.dev"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/sealmark"><img src="https://img.shields.io/npm/v/sealmark?label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/sealmark"><img src="https://img.shields.io/npm/dw/sealmark" alt="npm downloads per week"></a>
+  <a href="https://github.com/jordanallenlewis/sealmark/actions/workflows/cli.yml"><img src="https://github.com/jordanallenlewis/sealmark/actions/workflows/cli.yml/badge.svg?branch=main" alt="CLI tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
+</p>
+
 # Sealmark
 
 **Every row where it belongs.**
@@ -12,28 +19,7 @@ An agent-facing server is easy to configure and hard to trust: read-only flags, 
 
 > **An A means the server passed these specific, published probes with this exact configuration. It is not a security endorsement.** Every report says what was not covered.
 
-Status: CLI 1.0.0, methodology `0.3-draft` (checks and thresholds can still change before 1.0; 0.3-draft is not released yet, and a 0.2-draft report cannot be replayed under it). Source repo is private for now.
-
-What 0.3-draft changes. It is one methodology change, regenerated in one commit so it can be accepted or rejected as one unit (see [`docs/methodology.md`](docs/methodology.md), "What changed in 0.3-draft"):
-
-- **Verdicts:** `net-redirect` is a scored, non-critical standard check. `tool-poisoning` flags terminal control characters (ESC, NUL and C1 strong; other C0 controls and DEL weak). `fs-read-escape` and `fs-write-escape` are inconclusive when no escape probe was answered. `exec-timeout-cap` confirms a "killed" reply against the process table. A refused no-argument call no longer counts as a valid call. The `db` mutating-SQL corpus has 19 cases (the transaction terminators `COMMIT`, `ROLLBACK`, `END` and `ABORT` are all probed), and the advisory candidate `db-privilege` checks that each instance connects as the role it was given.
-- **Exit policy:** the `ci` profile counts an inconclusive pack as failing, and a provisional `A*` does not meet `--fail-under A`.
-- **Reports and config:** one tag per check line (advisory checks end with `(advisory, not scored)`), one score fraction (points over scored checks) in every format, `{listener_port}` in the text sandbox line, and `sealmark config show` opens with `# STANDARD` or `# CUSTOM`. `retries.call` is accepted and ignored.
-- **Second verification round (the same unit):** `net-loopback-ssrf` and `net-scheme-allowlist` accept a refusal only when it ties itself to the target (a reply that only reports a failed fetch, such as a proxy, socket or DNS error, is not a refusal), and the loopback corpus gains an IPv4-mapped IPv6 spelling. The `fs-write-escape` corpus mirrors the read corpus (percent-encoded, `file://` and dot-slash forms). The `git` fixture stages a change and plants a link, and the `git` pack needs `{sandbox}` in the config, like `fs`. `sqlite-extension-load` retries with a form the tool accepts, and `sqlite-file-read` follows a writer's `ATTACH` through the controlled reader. Coverage counts only calls the server processed (a reply that reports a failed upstream request, a schema-validation rejection and an errored control call do not count). A run with custom checks or plugins gets its own `config.hash`. A resolved package version is reported as `unknown` rather than guessed.
-- **Third verification round (the same unit):** a refusal now rests on what the harness observed more than on words. A transport failure such as "refused to connect" is never a refusal; a tool whose loopback probes were all refused with nothing observed behind them is also sent a URL with no host, and if that gets the same sentence the check is inconclusive until `net.control_url` names a URL the tool fetches. `tool-poisoning` scans the server instructions and `serverInfo`, and `protocol` reports non-JSON-RPC output on stdout. The `sqlite` pack confirms the engine with `sqlite_version()` and says so when a server is not SQLite (DuckDB is not graded), and its file checks try the single-call, stacked and copy-into-fixture forms. The `db` pack grades a SQL tool that has another required parameter (`sql_tools[].args` fills the ones a token cannot satisfy). `git-repo-scope` probes with relative paths and judges write tools by observation, and an unjudged read tool makes it `part` at any confidence. The `fs` corpus gains array, backslash, move-through-link, dangling-link and edit-tool families, and `server.rootless: true` grades a server that takes no root argument. A correctly guarded URL tool can now be green under the `ci` profile: `effects` is `n/a` for it. See [`docs/methodology.md`](docs/methodology.md), "Round 5".
-- **New in CLI 0.3.0 (still in 1.0.0): the `oauth` candidate pack.** `--oauth` starts a harness-owned stub issuer (https by default, with a throwaway CA) and fills `{issuer}`, `{jwks}`, `{audience}` and `{ca_file}` so the server under test trusts it. `oauth-token-forgery` and `oauth-claims` (critical) send forged, unsigned, expired, wrong-issuer and wrong-audience tokens after a control token is accepted; `oauth-discovery` checks the 401 challenge and RFC 9728 metadata; `oauth-scope` checks required scopes and refuses query-string tokens. Also new: `upstream-token-passthrough` (the caller's token must never reach the upstream) and `http-session-binding` (a session id is bound to the caller that opened it). Candidate checks are scored in their own pack and stay off the badge.
-- **Also in CLI 0.2.2:** tool-surface drift detection (`--fail-on drift`, `sealmark diff`), a self-reported README badge (`--format badge`), `--fixture fs|git|sqlite`, and the classifier and corpus fixes for `fs`, `git`, `net` and `sqlite`.
-
-The `dist/toy` directory in the npm package holds the synthetic servers the test suite uses; they are fixtures, not part of the product surface.
-
-## Quick answers
-
-- **What is Sealmark?** An open-source (Apache-2.0) command-line tool that tests how an MCP server behaves: it starts the server, calls its tools with fixed inputs, checks what happened, and grades each test suite A to F with evidence. No language model is involved.
-- **How do I run it?** `npx sealmark run --start "<command that starts your server>"` (Node 22.13 or newer).
-- **How is it different from the MCP Inspector or the official conformance framework?** Those are made by the MCP project: the Inspector is for exploring a server interactively, the conformance framework checks protocol compliance. Sealmark grades what a server's tools do (writes, SQL, files, network, secrets). They complement each other; the [comparison](https://sealmark.dev/compare/) says where Sealmark is weaker.
-- **Can I run it in CI?** Yes: `sealmark run --fail-under B` sets the exit code, and the [GitHub Action](action/README.md) uploads SARIF to code scanning.
-- **Where are real results?** [sealmark.dev/results](https://sealmark.dev/results/): one page per graded public server, each re-tested automatically.
-- **Does an A mean the server is secure?** No. It means these published probes passed with this configuration.
+Status: CLI 1.0.0, methodology `0.3-draft` (not released yet: checks and thresholds can still change before methodology 1.0, and a 0.2-draft report cannot be replayed under it). What changed: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Quickstart
 
@@ -46,6 +32,37 @@ npx sealmark run      # grade it
 ```
 
 In CI, one command is enough: `npx sealmark run --fail-under B`. See [`cli/README.md`](cli/README.md) for every command and flag.
+
+## What a report looks like
+
+```
+sealmark 1.0.0 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
+
+stdio server, 2 tool(s): echo, add
+sandbox: {sandbox_dir} · env scrubbed · listener 127.0.0.1:{listener_port} · cleaned up
+
+PACK core  GRADE A  (4/4 points, 100%)  hygiene only · tools called with valid arguments: 0 of 2
+  [PASS] Valid MCP handshake and tool schemas — handshake ok, 2 well-formed tool(s)
+  ...
+
+PACK db  not graded: server config has no {dsn}/{host}/... placeholder, ...
+
+Badge: not eligible: core-only run: no capability pack was graded.
+
+Not covered:
+  - tool "echo" is covered by the core checks only: ...
+```
+
+Abridged, from one of the test suite's toy servers (a fixture: its result says nothing about any real server). Worst verdicts print first; every line has a tag (`[PASS]`, `[PART]`, `[FAIL]`, `[INCL]`, `[N/A ]`) and its evidence. Real results for public servers, with the full evidence, are at [sealmark.dev/results](https://sealmark.dev/results/). How to read every part: [Reading the report](cli/README.md#reading-the-report).
+
+## Quick answers
+
+- **What is Sealmark?** An open-source (Apache-2.0) command-line tool that tests how an MCP server behaves: it starts the server, calls its tools with fixed inputs, checks what happened, and grades each test suite A to F with evidence. No language model is involved.
+- **How do I run it?** `npx sealmark run --start "<command that starts your server>"` (Node 22.13 or newer).
+- **How is it different from the MCP Inspector or the official conformance framework?** Those are made by the MCP project: the Inspector is for exploring a server interactively, the conformance framework checks protocol compliance. Sealmark grades what a server's tools do (writes, SQL, files, network, secrets). They complement each other; the [comparison](https://sealmark.dev/compare/) says where Sealmark is weaker.
+- **Can I run it in CI?** Yes: `sealmark run --fail-under B` sets the exit code, and the [GitHub Action](action/README.md) uploads SARIF to code scanning.
+- **Where are real results?** [sealmark.dev/results](https://sealmark.dev/results/): one page per graded public server, each re-tested automatically.
+- **Does an A mean the server is secure?** No. It means these published probes passed with this configuration.
 
 ## What it checks
 
@@ -104,6 +121,9 @@ For the full design (run lifecycle, components, verdict model, trust model, and 
 | `cli/` | The harness and the `sealmark` command (TypeScript, Node 22.13+) |
 | `action/` | The composite GitHub Action that runs Sealmark in a workflow |
 | `docs/` | Architecture, methodology and CI design |
+| `CHANGELOG.md` | What changed in each CLI release and methodology draft |
+
+The `dist/toy` directory in the npm package holds the synthetic servers the test suite uses; they are fixtures, not part of the product surface.
 
 Develop: `cd cli && npm run typecheck && npm test`.
 

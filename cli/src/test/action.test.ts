@@ -64,8 +64,12 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
   });
 
   it("the README says what must be true before uses: works", () => {
-    assert.match(readme, /uses: <owner>\/sealmark\/action@main/);
-    assert.match(readme, /must be public/);
+    // The repository is public (since 2026-11), so the examples name the real owner and pin a release tag that matches the CLI version.
+    const pkg = JSON.parse(text(fileURLToPath(new URL("../../package.json", import.meta.url)))) as { version: string };
+    const uses = [...readme.matchAll(/^\s*-?\s*uses: (\S+\/sealmark\/action@\S+)/gm)].map((m) => m[1]);
+    assert.ok(uses.length >= 2, "the workflow example and the bearer example both show a uses: line");
+    for (const u of uses) assert.equal(u, `jordanallenlewis/sealmark/action@v${pkg.version}`, `${u}: the real owner and the tag of this CLI version`);
+    assert.ok(!/<owner>|action@main/.test(readme), "no placeholder owner and no unpinned @main");
     assert.match(readme, /is on npm/);
     assert.match(readme, /contents: read/);
     assert.match(readme, /security-events: write/);

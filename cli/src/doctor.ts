@@ -5,7 +5,7 @@ import { userInfo } from "node:os";
 import { join, posix, win32 } from "node:path";
 import { classificationBlock, classifyTools, packsFor, secondaryUrlParam } from "./classify.js";
 import { TEMPLATE_COMMAND, displaySpec, expand, usesPlaceholders, type TemplateCtx } from "./config.js";
-import { CONNECT_TIMEOUT_ADVICE, isConnectTimeout, launchServer, stopOnSignals, type LaunchedServer } from "./launch.js";
+import { CONNECT_TIMEOUT_ADVICE, isConnectTimeout, isPortInUse, launchServer, PORT_IN_USE_ADVICE, stopOnSignals, type LaunchedServer } from "./launch.js";
 import { listSegments, type IpcsRow } from "./embedded.js";
 import type { EffectiveConfig, NamedServer } from "./config/index.js";
 import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, driftHint, resolvePackage, type OpenOptions, type ToolInfo } from "./mcp.js";
@@ -496,8 +496,10 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
     } catch (e) {
       launchFailed = true;
       items.push({ id: "launch", status: "fail", title: "the server did not start", detail: (e as Error).message });
+      // A taken port is the cause whatever else the run gave the server: say that, and not the trust-root advice.
+      if (isPortInUse((e as Error).message)) items.push({ id: "advice", status: "info", title: "the server's port is already in use", detail: PORT_IN_USE_ADVICE });
       // Round 7: a hardened server refuses to start on a trust root it does not accept (an http issuer, an unknown CA).
-      if (authStub) items.push({ id: "advice", status: "info", title: "the server was given the harness's stub issuer (oauth.issuer: stub) and stopped before it answered", detail: `${oauthStartupHint(authStub.tls)}. In this doctor run {issuer} was ${authStub.issuer}${vars.ca_file ? ` and {ca_file} ${vars.ca_file}` : ""}` });
+      else if (authStub) items.push({ id: "advice", status: "info", title: "the server was given the harness's stub issuer (oauth.issuer: stub) and stopped before it answered", detail: `${oauthStartupHint(authStub.tls)}. In this doctor run {issuer} was ${authStub.issuer}${vars.ca_file ? ` and {ca_file} ${vars.ca_file}` : ""}` });
     }
   }
   if (!failedLauncher && !launchFailed) {

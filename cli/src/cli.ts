@@ -2,7 +2,8 @@
 import { accessSync, constants, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { INIT_PROBES_ONLY, matchCommand, flagsFor, parseArgsSpec, usageText } from "./cli-spec.js";
+import { CLI_COMMANDS, INIT_PROBES_ONLY, matchCommand, flagsFor, parseArgsSpec, usageText } from "./cli-spec.js";
+import { didYouMean } from "./config/util.js";
 import {
   UsageError,
   initProbesCommand,
@@ -374,7 +375,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
       if (!first && values.fixture !== undefined) {
         throw new UsageError(`missing command: did you mean sealmark run --fixture ${String(values.fixture)}${values.into !== undefined ? ` --into ${String(values.into)}` : ""}`);
       }
-      throw new UsageError(first ? `unknown command "${first}"` : "missing command");
+      const near = first ? didYouMean(first, new Set(CLI_COMMANDS.map((c) => c.name.split(" ")[0]!))) : undefined;
+      throw new UsageError(first ? `unknown command "${first}"${near ? `; did you mean "${near}"?` : ""}` : "missing command");
     }
     const { command, rest } = m;
     known = command.name;

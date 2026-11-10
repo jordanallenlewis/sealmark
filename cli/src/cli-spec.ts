@@ -231,10 +231,27 @@ export function flagsFor(command: string): CliFlag[] {
   return CLI_FLAGS.filter((f) => f.commands.includes(command));
 }
 
+/** The common first commands, printed under "examples:" in the usage text (tests parse every one against the table). */
+export const USAGE_EXAMPLES: readonly { argv: readonly string[]; does: string }[] = [
+  { argv: ["init"], does: "write sealmark.yaml from the servers your MCP clients already use" },
+  { argv: ["doctor"], does: "check that Sealmark can start the server, and see which packs would run" },
+  { argv: ["run", "--start", "npx -y @modelcontextprotocol/server-filesystem {sandbox}"], does: "grade a stdio server" },
+  { argv: ["run", "--url", "http://127.0.0.1:8000/mcp", "--bearer", "${MCP_TOKEN}"], does: "grade a running Streamable HTTP server" },
+  { argv: ["run", "--fail-under", "B", "--format", "sarif", "--out", "sealmark.sarif"], does: "a CI gate, with a report for code scanning" },
+  { argv: ["explain", "fs-read-escape"], does: "what one check probes, and how to fix a failure" },
+];
+
+/** One example as a reader would type it: arguments with a space or a placeholder are quoted ('${VAR}' single, so the shell leaves it to Sealmark). */
+function exampleLine(argv: readonly string[]): string {
+  return ["sealmark", ...argv.map((a) => (a.includes("${") ? `'${a}'` : /[\s{}]/.test(a) ? `"${a}"` : a))].join(" ");
+}
+
 /** The usage text, generated from the table. `heading` lets cli.ts keep its own first line. */
 export function usageText(heading = "sealmark: behavioral conformance tests for MCP servers"): string {
   const lines = [heading, "", "usage:"];
   for (const c of CLI_COMMANDS) lines.push(`  sealmark ${c.usage}`);
+  lines.push("", "examples:");
+  for (const e of USAGE_EXAMPLES) lines.push(`  ${exampleLine(e.argv)}`, `      ${e.does}`);
   lines.push("", "flags:");
   for (const f of CLI_FLAGS) {
     if ((f.commands.length === 0 && f.name !== "version") || f.status === "planned") continue;
