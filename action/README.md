@@ -2,7 +2,7 @@
 
 Runs Sealmark against an MCP server in a job, writes the summary, JSON, JUnit and SARIF reports, uploads the SARIF to code scanning and the report directory as a workflow artifact, and fails the job exactly when the CLI does.
 
-It is a composite action: `action.yml` plus `run.mjs` (plain Node, no dependencies). Nothing here is published; the files live in the repository only.
+It is a composite action: `action.yml` plus `run.mjs` (plain Node, no dependencies). It is used straight from this repository (`uses: jordanallenlewis/sealmark/action@<tag>`); it is not listed on the GitHub Marketplace.
 
 ## Use it
 
@@ -19,16 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4   # pin to a commit SHA
-      - uses: <owner>/sealmark/action@main
+      - uses: jordanallenlewis/sealmark/action@v1.0.0   # or pin a commit SHA
         with:
           start: npx -y my-mcp-server
           pack: core
 ```
 
-Two things must be true before this works for anyone:
+One thing must be true before this works:
 
-- The repository must be public. A `uses:` line cannot reach an action in a private repository of another owner.
-- The pinned `version` input (default `1.0.0`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`; whenever the owner bumps the CLI version label (for methodology 0.3-draft the recommended label is `0.3.0`), the `version` default in `action.yml` and the `0.2.1` in the table below move with it.
+- The pinned `version` input (default `1.0.0`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`: when the CLI version moves, the `version` default in `action.yml` and in the table below move with it.
 
 With neither `start`, `url` nor `config` the action exits 2 and says `sealmark action: set start and url (or config)`.
 
@@ -86,7 +85,7 @@ permissions:
 `bearer-env` is the name of a variable, never its value:
 
 ```yaml
-- uses: <owner>/sealmark/action@main
+- uses: jordanallenlewis/sealmark/action@v1.0.0
   env:
     MCP_TOKEN: ${{ secrets.MCP_TOKEN }}
   with:

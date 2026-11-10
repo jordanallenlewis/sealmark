@@ -51,6 +51,18 @@ export const CONNECT_TIMEOUT_ADVICE = "The first start of an npx or uvx server d
 /** True for the SDK's request timeout (JSON-RPC code -32001, "Request timed out"). */
 export const isConnectTimeout = (message: string): boolean => /-32001|Request timed out/i.test(message);
 
+/** True when the server stopped because its port was already taken (Node's EADDRINUSE, or the words most servers print for it). */
+export const isPortInUse = (message: string): boolean => /EADDRINUSE|address already in use|port is already (in use|allocated)/i.test(message);
+
+/** The advice after a server that could not bind its port; `run` and `doctor` say it in the same words. */
+export const PORT_IN_USE_ADVICE = "another process is already listening on that port: stop it (or the earlier run of this server), or start the server on a free port and pass that URL in --url (server.url)";
+
+/**
+ * The hint for a server Sealmark started that never answered. A taken port is said first and alone: it is the cause whatever else the
+ * run was given, and the oauth trust-root advice would send the reader the wrong way. Otherwise the caller's own hint, if any.
+ */
+export const launchFailureHint = (message: string, otherwise?: string): string | undefined => (isPortInUse(message) ? PORT_IN_USE_ADVICE : otherwise);
+
 /** `the server did not answer initialize within 60 s (--connect-timeout). The first start of ...` */
 export const connectTimeoutMessage = (connectMs: number): string => `the server did not answer initialize within ${Math.round(connectMs / 1000)} s (--connect-timeout). ${CONNECT_TIMEOUT_ADVICE}`;
 
