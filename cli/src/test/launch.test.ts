@@ -183,5 +183,11 @@ describe("a server whose port is taken", { timeout: 60_000 }, () => {
     calls = 0;
     await assert.rejects(withFreePort(async () => { calls++; throw new Error("EADDRINUSE"); }, 2), /EADDRINUSE/);
     assert.equal(calls, 2, "gives up after the last try");
+    calls = 0;
+    const r = await withFreePort(async () => {
+      if (++calls === 1) throw new LaunchError("something is already answering at http://127.0.0.1:9/mcp (HTTP 200) before the server was started, so it would be graded instead of yours. Stop it or use another port.");
+      return "second port";
+    });
+    assert.deepEqual([r, calls], ["second port", 2], "a port found answering before the start is retried too");
   });
 });

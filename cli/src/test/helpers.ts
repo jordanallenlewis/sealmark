@@ -43,7 +43,7 @@ export async function freePort(): Promise<number> {
 /**
  * Runs `start` with a fresh free port, and again with another one (at most `tries` times in all) only when it failed because the port
  * was taken: freePort() releases its port before the server binds it, so another listener can win it in between (CI run 42663100804,
- * the r7 oauth e2e test). Any other failure is thrown at once, and nothing the test asserts afterwards is relaxed.
+ * the r7 oauth e2e test), and launchServer either finds it answering before the start or the server fails to bind. Any other failure is thrown at once, and nothing the test asserts afterwards is relaxed.
  */
 export async function withFreePort<T>(start: (port: number) => Promise<T>, tries = 3): Promise<T> {
   for (let i = 1; ; i++) {
@@ -51,7 +51,9 @@ export async function withFreePort<T>(start: (port: number) => Promise<T>, tries
     try {
       return await start(port);
     } catch (e) {
-      if (i >= tries || !isPortInUse(e instanceof Error ? e.message : String(e))) throw e;
+      const message = e instanceof Error ? e.message : String(e);
+      // Lost before the start (launchServer's own check found another listener answering) or after it (the server's EADDRINUSE).
+      if (i >= tries || !(isPortInUse(message) || /something is already answering at /.test(message))) throw e;
     }
   }
 }
