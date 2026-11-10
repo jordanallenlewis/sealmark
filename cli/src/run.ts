@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { classifyTools, coreOnlyNotes, packsFor } from "./classify.js";
 import { ConfigError, TEMPLATE_COMMAND, displaySpec, usesPlaceholders, type TemplateCtx } from "./config.js";
 import type { IdentitySettings, ScopeSettings, UpstreamSettings } from "./config/model.js";
-import { connectTimeoutMessage, isConnectTimeout, launchServer, LaunchError, stopOnSignals, wasInterrupted, type LaunchedServer } from "./launch.js";
+import { connectTimeoutMessage, isConnectTimeout, launchFailureHint, launchServer, LaunchError, stopOnSignals, wasInterrupted, type LaunchedServer } from "./launch.js";
 import { leftoverDirs, pendingPids, startEmbedded, stopAll, type EmbeddedHandle } from "./embedded.js";
 import { createLogObserver } from "./observers/log.js";
 import { createProcessObserver, terminatePids } from "./observers/process.js";
@@ -695,8 +695,11 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           },
         });
       } catch (e) {
-        // Round 7: a hardened server refuses to start when it does not like its trust root; say what --oauth gave it.
-        throw new HarnessError(e instanceof LaunchError ? e.message : `could not start the server: ${(e as Error).message}`, authStub ? { hint: oauthStartupHint(authStub.tls) } : {});
+        // Round 7: a hardened server refuses to start when it does not like its trust root; say what --oauth gave it. A taken port is
+        // the cause whatever --oauth gave it, so that hint wins.
+        const message = e instanceof LaunchError ? e.message : `could not start the server: ${(e as Error).message}`;
+        const hint = launchFailureHint(message, authStub ? oauthStartupHint(authStub.tls) : undefined);
+        throw new HarnessError(message, hint ? { hint } : {});
       }
     }
     /** Where and how the server process starts: the sandbox root with a scrubbed environment, or a throwaway cwd with everything inherited. */

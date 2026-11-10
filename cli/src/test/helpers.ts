@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startEmbedded, type EmbeddedHandle } from "../embedded.js";
+import { isPortInUse } from "../launch.js";
 import type { CheckResult, PackId, RunResult, SealmarkConfig, Verdict } from "../types.js";
 
 /** dist/toy/server.js, resolved from dist/test/helpers.js. */
@@ -37,6 +38,22 @@ export async function freePort(): Promise<number> {
       s.close(() => res(port));
     });
   });
+}
+
+/**
+ * Runs `start` with a fresh free port, and again with another one (at most `tries` times in all) only when it failed because the port
+ * was taken: freePort() releases its port before the server binds it, so another listener can win it in between (CI run 42663100804,
+ * the r7 oauth e2e test). Any other failure is thrown at once, and nothing the test asserts afterwards is relaxed.
+ */
+export async function withFreePort<T>(start: (port: number) => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    const port = await freePort();
+    try {
+      return await start(port);
+    } catch (e) {
+      if (i >= tries || !isPortInUse(e instanceof Error ? e.message : String(e))) throw e;
+    }
+  }
 }
 
 export const quiet = () => {};
