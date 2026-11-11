@@ -114,6 +114,16 @@ The sandbox is a convention the harness follows, not a security boundary. A mali
 
 For the full design (run lifecycle, components, verdict model, trust model, and the alternatives that were rejected and why), read **[`docs/architecture.md`](docs/architecture.md)**.
 
+## Usage counter (off by default)
+
+Sealmark sends nothing unless you set `SEALMARK_TELEMETRY=1`. With it set, each command sends one ping when it finishes, and prints the exact JSON to stderr first:
+
+```json
+{"schema":1,"sealmark":"1.0.1","command":"run","node":22,"os":"linux","ci":false}
+```
+
+That is the CLI version, the command name, the Node major version, the OS family and whether `CI` is set. It never includes the server under test, its tools, your config, paths, results, hostnames or any identifier. The ping goes to `https://sealmark.dev/api/ping` (override with `SEALMARK_TELEMETRY_URL`), times out after 2 seconds, and a failure never changes the exit code. `DO_NOT_TRACK=1` turns it off even when `SEALMARK_TELEMETRY=1` is set. The code is `cli/src/telemetry.ts`.
+
 ## Repository layout
 
 | Path | What |
