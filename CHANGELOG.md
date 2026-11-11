@@ -2,6 +2,10 @@
 
 What changed in each CLI release and methodology draft (until 2026-11-10 these notes opened the README). The full, per-check record of every change that can move a verdict is in [`docs/methodology.md`](docs/methodology.md), "What changed in 0.3-draft". Releases: [GitHub Releases](https://github.com/jordanallenlewis/sealmark/releases) and [npm](https://www.npmjs.com/package/sealmark?activeTab=versions).
 
+## CLI 1.0.1 (2026-11-11), methodology 0.3-draft
+
+No change to any check or grade. The npm package no longer ships ten stale `dist/* 2.js` modules (Finder copies committed with 0.3.0), a port-in-use error now carries a hint, and `--help` has examples. Methodology stays `0.3-draft`.
+
 ## CLI 1.0.0 (2026-11-09), methodology 0.3-draft
 
 The version bump only: package, lockfile and the pinned version in the action and examples. Methodology stays `0.3-draft`, unchanged from CLI 0.3.0. The CLI version and the methodology version move separately; a methodology change is what can move a grade.
