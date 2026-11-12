@@ -307,6 +307,21 @@ describe("cli: failures", { timeout: 300_000 }, () => {
     assert.match(failed.error, /ModuleNotFoundError/);
     assert.ok(failed.stderrFile.endsWith("drift.json.stderr.log"));
     assert.match(readFileSync(failed.stderrFile, "utf8"), /ModuleNotFoundError: No module named foo/);
+    // sealmark#9: the start failure is typed in the report and said on stderr, next to the unchanged error.
+    assert.equal((failed as unknown as { startFailure: { kind: string } }).startFailure.kind, "dependency-resolution");
+    assert.match(r.err, /start failure \(dependency-resolution\): the server's package or one of its dependencies/);
+  });
+
+  it("a server that wants a credential it was not given: typed needs-credentials, exit 4 unchanged", () => {
+    const cfg = writeYaml("nocred.yaml", `schema_version: 1\nname: nocred\nserver:\n  command: ${q(process.execPath)}\n  args: ${q(["-e", "console.error('Error: ACME_API_KEY environment variable is required'); process.exit(1)"])}\n`);
+    const out = join(dir, "nocred.json");
+    const r = sealmark(["run", "--config", cfg, "--pack", "core", "--format", "json", "--out", out]);
+    assert.equal(r.code, 4, r.err);
+    const failed = readJson<{ status: string; error: string; startFailure: { kind: string; advice: string } }>(out);
+    assert.equal(failed.status, "failed");
+    assert.match(failed.error, /could not start or talk to the server/);
+    assert.equal(failed.startFailure.kind, "needs-credentials");
+    assert.match(failed.startFailure.advice, /credential/);
   });
 
   it("--pack exec without --active is a usage error (exit 2) and says why", () => {

@@ -16,6 +16,7 @@ import { startAuthServer } from "./observers/authserver.js";
 import { CA_ENV_VARS, OAUTH_SUB, OAUTH_TRUST_HINT, accessTokenClaims, canonicalResource, oauthSettings, oauthStartupHint, withOauthHeader } from "./oauth.js";
 import { normVersion, versionWarnings } from "./resolve.js";
 import { gradePack } from "./grade.js";
+import { classifyStartFailure, type StartFailure } from "./start-failure.js";
 import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, usesBearer, type OpenOptions } from "./mcp.js";
 import { MAX_TOOLS_PROBED, applyChecksConfig, boundSeen, protocolFailure, refusalQuality, runCore, variantsFor } from "./packs/core.js";
 import { runDb } from "./packs/db.js";
@@ -62,10 +63,13 @@ export class HarnessError extends Error {
   hint?: string;
   /** Bounded copy of the server's stderr, for `<out>.stderr.log`. */
   stderr?: string;
-  constructor(message: string, extra: { hint?: string; stderr?: string } = {}) {
+  /** Set when the server under test could not be started or talked to: what kind of failure it was and what to do (sealmark#9). */
+  startFailure?: StartFailure;
+  constructor(message: string, extra: { hint?: string; stderr?: string; startFailure?: StartFailure } = {}) {
     super(message);
     this.hint = extra.hint;
     this.stderr = extra.stderr;
+    this.startFailure = extra.startFailure;
   }
 }
 
@@ -699,7 +703,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         // the cause whatever --oauth gave it, so that hint wins.
         const message = e instanceof LaunchError ? e.message : `could not start the server: ${(e as Error).message}`;
         const hint = launchFailureHint(message, authStub ? oauthStartupHint(authStub.tls) : undefined);
-        throw new HarnessError(message, hint ? { hint } : {});
+        // The launch error carries the server's last output, so it is all the classifier needs.
+        throw new HarnessError(message, { ...(hint ? { hint } : {}), startFailure: classifyStartFailure({ message }) });
       }
     }
     /** Where and how the server process starts: the sandbox root with a scrubbed environment, or a throwaway cwd with everything inherited. */
@@ -766,7 +771,10 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         const auth = transport === "http" ? await unauthorizedHint(spec, baseCtx()) : undefined;
         // The SDK's bare "MCP error -32001: Request timed out" names neither the limit nor the flag that raises it.
         const what = isConnectTimeout(e.message) ? connectTimeoutMessage(eff.timeouts.connect_ms) : `could not start or talk to the server: ${e.message}.`;
-        throw new HarnessError(`${what}${hint}`, { hint: [auth, e.hint].filter(Boolean).join(" ") || undefined, stderr: e.stderr });
+        // The kind is read from the SDK's own message (not `what`, which rewrites a timeout) and the server's stderr.
+        // Not for a run that was interrupted: the server did not fail, the harness stopped starting it.
+        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr });
+        throw new HarnessError(`${what}${hint}`, { hint: [auth, e.hint].filter(Boolean).join(" ") || undefined, stderr: e.stderr, startFailure });
       } else throw e;
     }
 

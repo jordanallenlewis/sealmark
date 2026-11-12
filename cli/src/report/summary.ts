@@ -1,5 +1,5 @@
 import type { CheckResult, PackId, RunResult } from "../types.js";
-import { CLOSING_LINE, capLoweredLetter, coverageTag, headerBlock, isFailed, packsBelowGate, type AnyRun, type FailedRun } from "./common.js";
+import { CLOSING_LINE, capLoweredLetter, coverageTag, headerBlock, isFailed, packsBelowGate, startFailureLine, type AnyRun, type FailedRun } from "./common.js";
 import { redactFailed, redactResult, type RedactOptions } from "./redact.js";
 import { clipWidth, displayWidth, inert, inertDeep, wrapWidth } from "./sanitize.js";
 
@@ -60,6 +60,7 @@ function failed(run: FailedRun, o: SummaryOptions): string[] {
     `${clipWidth(inert(f.server, 80), W - 10)}: FAILED`,
     ...wrapWidth(inert(f.error, MAX_ERROR), W - 2).map((l) => `  ${l}`),
     ...hint.map((l, i) => (i === 0 ? `  hint: ${l}` : `        ${l}`)),
+    ...(f.startFailure ? wrapWidth(inert(startFailureLine(f.startFailure), MAX_ERROR), W - 2).map((l) => `  ${l}`) : []),
     "",
   ];
 }

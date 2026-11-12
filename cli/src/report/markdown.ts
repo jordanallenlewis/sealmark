@@ -1,7 +1,7 @@
 import type { RunResult, ToolClassification } from "../types.js";
 import { coreOnlyReason } from "../classify.js";
 import { applyTemplate } from "./template.js";
-import { CANDIDATE_LABEL, CLOSING_LINE, badgeLine, capLoweredLetter, coverageTag, diffLines, headerLine, identitiesLine, inheritedText, isCandidatePack, isFailed, orderedPackIds, packageLabel, packsApplied, round6Fields, scoreText, secondaryText, sortChecks, summaryLine, upstreamLine, withSuggestionLines, type AnyRun } from "./common.js";
+import { CANDIDATE_LABEL, CLOSING_LINE, badgeLine, capLoweredLetter, coverageTag, diffLines, headerLine, identitiesLine, inheritedText, isCandidatePack, isFailed, orderedPackIds, packageLabel, packsApplied, round6Fields, scoreText, secondaryText, sortChecks, startFailureLine, summaryLine, upstreamLine, withSuggestionLines, type AnyRun } from "./common.js";
 import { listenerLabel, redactResult, type RedactOptions } from "./redact.js";
 import { MAX_REPORT_FIELD, inert, inertDeep } from "./sanitize.js";
 
@@ -122,7 +122,7 @@ export function renderMarkdown(runs: AnyRun[], o: RedactOptions & { template?: s
   if (multi) lines.push("# Sealmark matrix report", "");
   for (const run of runs) {
     if (isFailed(run)) {
-      lines.push(`${multi ? "##" : "#"} Sealmark report: ${cell(inert(run.server, 200))}`, "", `**FAILED:** ${cell(inert(run.error, MAX_ERROR))}`, ...(run.hint ? ["", `Hint: ${cell(inert(run.hint, MAX_ERROR))}`] : []), "");
+      lines.push(`${multi ? "##" : "#"} Sealmark report: ${cell(inert(run.server, 200))}`, "", `**FAILED:** ${cell(inert(run.error, MAX_ERROR))}`, ...(run.hint ? ["", `Hint: ${cell(inert(run.hint, MAX_ERROR))}`] : []), ...(run.startFailure ? ["", cell(inert(startFailureLine(run.startFailure), MAX_ERROR))] : []), "");
       continue;
     }
     // Every string in the result is server-controlled or derived from it: made inert once, here, after redaction.

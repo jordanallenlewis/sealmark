@@ -253,6 +253,19 @@ describe("renderReport", () => {
     const s = validateSarifShape(renderReport("sarif", runs));
     assert.ok(s.runs.some((r: { results: { ruleId: string }[] }) => r.results.some((x) => x.ruleId === "harness-failure")));
   });
+
+  it("a typed start failure (sealmark#9) prints one line in every human format and stays in the JSON", () => {
+    const startFailure = { kind: "needs-credentials" as const, advice: "the server wants a credential" };
+    const f: FailedRun = { status: "failed", server: "dead", error: "could not start or talk to the server: Connection closed.", startFailure, sealmark: { version: "1.0.0", methodology: "0.3-draft" } };
+    const runs: AnyRun[] = [fullRun(), f];
+    assert.match(renderReport("text", runs), /server dead: FAILED\n {2}could not start or talk to the server: Connection closed\.\n {2}start failure \(needs-credentials\): the server wants a credential\n/);
+    assert.match(renderSummary([f]), /dead: FAILED\n.*Connection closed\.\n {2}start failure \(needs-credentials\): the server wants a credential/);
+    assert.match(renderMarkdown([f]), /\*\*FAILED:\*\* could not start or talk to the server: Connection closed\.\n\nstart failure \(needs-credentials\): the server wants a credential/);
+    assert.deepEqual((JSON.parse(renderReport("json", runs)) as { runs: FailedRun[] }).runs[1].startFailure, startFailure);
+    // Without one, a failed run reads exactly as before.
+    const plain: FailedRun = { ...f, startFailure: undefined };
+    assert.ok(!/start failure/.test(renderReport("text", [plain]) + renderSummary([plain]) + renderMarkdown([plain])));
+  });
 });
 
 describe("junit", () => {

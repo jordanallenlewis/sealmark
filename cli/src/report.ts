@@ -26,6 +26,7 @@ import {
   scoreText,
   secondaryText,
   sortChecks,
+  startFailureLine,
   suggestionLines,
   summaryLine,
   upstreamLine,
@@ -35,7 +36,7 @@ import {
 } from "./report/common.js";
 import type { CheckResult, PackId, RunResult, ToolClassification } from "./types.js";
 
-export { CLOSING_LINE, summaryLine, type AnyRun, type FailedRun } from "./report/common.js";
+export { CLOSING_LINE, startFailureLine, summaryLine, type AnyRun, type FailedRun } from "./report/common.js";
 export { isFailed } from "./report/common.js";
 
 export type ReportFormat = "text" | "json" | "markdown" | "junit" | "sarif" | "summary" | "badge" | "shields";
@@ -122,6 +123,7 @@ function failedText(f: FailedRun): string {
   // Everything in a failed run came from the harness or the server, so all of it is made inert (the summary format does the same).
   const out = [`sealmark ${inert(f.sealmark.version, 80)} · server ${inert(f.server, 200)}: FAILED`, `  ${inert(f.error, MAX_ERROR)}`];
   if (f.hint) out.push(`  hint: ${inert(f.hint, MAX_ERROR)}`);
+  if (f.startFailure) out.push(`  ${inert(startFailureLine(f.startFailure), MAX_ERROR)}`);
   if (f.stderrFile) out.push(`  server stderr saved to ${inert(f.stderrFile, 1000)}`);
   return out.join("\n") + "\n";
 }
