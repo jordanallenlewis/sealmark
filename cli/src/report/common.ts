@@ -1,5 +1,6 @@
 import { CANDIDATE_PACKS, type CheckResult, type PackGrade, type PackId, type RunResult, type Suggestion, type Verdict } from "../types.js";
 import { inertLines } from "./sanitize.js";
+import type { StartFailure } from "../start-failure.js";
 
 /** A server whose run ended in a harness failure (exit 4). Written to JSON so a matrix or a CI artifact never silently lacks it. */
 export interface FailedRun {
@@ -7,9 +8,14 @@ export interface FailedRun {
   server: string;
   error: string;
   hint?: string;
+  /** Why the server could not start, when it never started (sealmark#9). Fixed harness text: no server output in it. */
+  startFailure?: StartFailure;
   stderrFile?: string;
   sealmark: { version: string; methodology: string };
 }
+
+/** The one line every human-readable format prints for a typed start failure. */
+export const startFailureLine = (f: StartFailure): string => `start failure (${f.kind}): ${f.advice}`;
 
 export type AnyRun = RunResult | FailedRun;
 export const isFailed = (r: AnyRun): r is FailedRun => (r as FailedRun).status === "failed" && !("packs" in r);
