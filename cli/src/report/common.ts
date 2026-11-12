@@ -8,7 +8,7 @@ export interface FailedRun {
   server: string;
   error: string;
   hint?: string;
-  /** Why the server could not start, when it never started (sealmark#9). Fixed harness text: no server output in it. */
+  /** Why the server could not be started or talked to (sealmark#9). Fixed harness text: no server output in it. */
   startFailure?: StartFailure;
   stderrFile?: string;
   sealmark: { version: string; methodology: string };

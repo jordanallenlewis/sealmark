@@ -34,7 +34,7 @@ describe("classifyStartFailure", () => {
     assert.equal(kind(CLOSED, "sh: 1: deno: not found"), "missing-runtime");
     assert.equal(kind(CLOSED, "/bin/sh: bun: command not found"), "missing-runtime");
     assert.equal(kind(CLOSED, "  × No solution found when resolving tool dependencies:\n  ╰─▶ Because the current Python version (3.10.12) does not satisfy Python>=3.11 and acme-mcp==1.0 depends on Python>=3.11, we can conclude that acme-mcp==1.0 cannot be used."), "missing-runtime");
-    assert.equal(kind(CLOSED, "npm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   package: 'acme-mcp@2.0.0',\nnpm warn EBADENGINE   required: { node: '>=24' },"), "missing-runtime");
+    assert.equal(kind(CLOSED, "npm error code EBADENGINE\nnpm error engine Unsupported engine\nnpm error notsup Required: {\"node\":\">=24\"}"), "missing-runtime");
     assert.equal(kind(CLOSED, "docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"), "missing-runtime");
   });
 
@@ -54,6 +54,17 @@ describe("classifyStartFailure", () => {
     assert.equal(kind("http://127.0.0.1:9/mcp did not answer within 60 s (no answer yet; raise --start-timeout ...)"), "initialize-timeout");
     // A specific cause on stderr wins over the timeout it led to.
     assert.equal(kind("MCP error -32001: Request timed out", "Error: SLACK_BOT_TOKEN is required"), "needs-credentials");
+  });
+
+  it("the last fatal line wins over earlier noise and warnings", () => {
+    // npm warns about engines on many npx installs and keeps going: the real cause comes after it.
+    assert.equal(kind(CLOSED, "npm warn EBADENGINE Unsupported engine { package: 'x@1', required: { node: '>=22' } }\nError: GITHUB_TOKEN environment variable is required"), "needs-credentials");
+    assert.equal(kind(CLOSED, "npm warn EBADENGINE Unsupported engine {\nnpm warn EBADENGINE   required: { node: '>=24' },"), "unknown");
+    // A warning-level line about a missing key is not why the process died.
+    assert.equal(kind(CLOSED, "WARNING: OPENAI_API_KEY not set, some tools disabled\nTraceback (most recent call last):\nTypeError: 'NoneType' object is not subscriptable"), "unknown");
+    assert.equal(kind(CLOSED, "2026-11-12T07:00:00Z [WARN] no credentials configured\nusage: srv [-h] --root ROOT"), "bad-launch");
+    // A dependency failure printed after a credential complaint is what stopped the start.
+    assert.equal(kind(CLOSED, "Error: API key is required for search tools\nModuleNotFoundError: No module named 'mcp'"), "dependency-resolution");
   });
 
   it("unknown: an empty or unrecognized stderr", () => {

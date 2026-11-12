@@ -63,7 +63,7 @@ export class HarnessError extends Error {
   hint?: string;
   /** Bounded copy of the server's stderr, for `<out>.stderr.log`. */
   stderr?: string;
-  /** Set when the server under test never started: what kind of failure it was and what to do (sealmark#9). */
+  /** Set when the server under test could not be started or talked to: what kind of failure it was and what to do (sealmark#9). */
   startFailure?: StartFailure;
   constructor(message: string, extra: { hint?: string; stderr?: string; startFailure?: StartFailure } = {}) {
     super(message);
@@ -772,7 +772,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         // The SDK's bare "MCP error -32001: Request timed out" names neither the limit nor the flag that raises it.
         const what = isConnectTimeout(e.message) ? connectTimeoutMessage(eff.timeouts.connect_ms) : `could not start or talk to the server: ${e.message}.`;
         // The kind is read from the SDK's own message (not `what`, which rewrites a timeout) and the server's stderr.
-        const startFailure = classifyStartFailure({ message: e.message, stderr: e.stderr });
+        // Not for a run that was interrupted: the server did not fail, the harness stopped starting it.
+        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr });
         throw new HarnessError(`${what}${hint}`, { hint: [auth, e.hint].filter(Boolean).join(" ") || undefined, stderr: e.stderr, startFailure });
       } else throw e;
     }
