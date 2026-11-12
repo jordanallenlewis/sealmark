@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://sealmark.dev"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
+  <a href="https://sealmark.dev/?utm_source=github&utm_medium=readme&utm_campaign=sealmark"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
 </p>
 
 <p align="center">
@@ -127,7 +127,7 @@ The `dist/toy` directory in the npm package holds the synthetic servers the test
 
 Develop: `cd cli && npm run typecheck && npm test`.
 
-The website, its docs and the published results live at [sealmark.dev](https://sealmark.dev).
+The website, its docs and the published results live at [sealmark.dev](https://sealmark.dev/?utm_source=github&utm_medium=readme&utm_campaign=sealmark).
 
 ## Documents
 
