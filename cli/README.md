@@ -130,7 +130,7 @@ core A (hygiene only) · db D capped: critical fail: mutating-sql
 db F critical fail: mutating-sql · fs B critical part: fs-read-escape
 ```
 
-When a server cannot be started, the run exits 4, prints a hint if the stderr looks like drifted dependencies, saves the full server stderr to `<out>.stderr.log`, and writes the report file with `"status": "failed"`, the `error`, and the `stderrFile`.
+When a server cannot be started, the run exits 4, prints a hint if the stderr looks like drifted dependencies, saves the full server stderr to `<out>.stderr.log`, and writes the report file with `"status": "failed"`, the `error`, and the `stderrFile`. It also says what kind of start failure it was, in one line and as `startFailure: {kind, advice}` in the JSON: `dependency-resolution` (a package or a pinned version could not be installed or imported), `needs-credentials` (an API key, token or sign-in is missing), `missing-runtime` (the launcher or runtime is missing or the wrong version), `bad-launch` (wrong arguments, entry file, permissions or a required setting), `initialize-timeout` (no answer in time and nothing more specific on stderr) or `unknown`. The kind is read from the error and the end of stderr; it is advice and never changes a grade.
 
 ## Configuration
 
