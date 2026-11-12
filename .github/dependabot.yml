@@ -1,0 +1,20 @@
+# Weekly dependency updates, minor + patch grouped into one PR per ecosystem.
+# Security updates are on in the repo settings and open their own PRs. Never auto-merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /cli
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ["*"]
