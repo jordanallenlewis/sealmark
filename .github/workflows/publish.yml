@@ -143,3 +143,15 @@ jobs:
           done
           echo "::error::sealmark@$VERSION is on npm but sealmark.dev did not show it within 60 minutes. Check the release-sync workflow in jordanallenlewis/sealmark-site (Actions tab) and re-run it."
           exit 1
+
+  github-packages:
+    # a mirror for the repository and profile pages; npm above stays the install source. Re-running is a no-op.
+    name: mirror to GitHub Packages
+    needs: [check, publish]
+    if: needs.check.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/github-packages.yml
+    with:
+      ref: ${{ github.sha }}

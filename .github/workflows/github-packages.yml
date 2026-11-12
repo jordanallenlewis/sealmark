@@ -1,0 +1,60 @@
+name: github-packages
+
+# Mirrors a published CLI version to GitHub Packages' npm registry as @jordanallenlewis/sealmark, so the package
+# shows on the repository and profile pages. npmjs.com stays the install source (`npx sealmark`): GitHub's npm
+# registry asks for a token even to install a public package, so nobody is pointed at the mirror.
+#
+# publish.yml calls this after npm has the new version. To mirror a version that was published before this existed:
+# Actions tab -> github-packages -> Run workflow -> ref = main (or the commit that holds that cli/package.json).
+# No stored token: the job's own GITHUB_TOKEN publishes, with packages: write. Re-running is a no-op.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: commit to mirror
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: branch, tag or commit whose cli/package.json version to mirror
+        type: string
+        default: main
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: mirror to GitHub Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@jordanallenlewis'
+      - name: Install
+        working-directory: cli
+        run: npm ci
+      - name: Publish @jordanallenlewis/sealmark unless this version is already there
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub's npm registry only takes scoped names, so the scope is added here and never committed.
+          npm pkg set name=@jordanallenlewis/sealmark
+          VER="$(node -p "require('./package.json').version")"
+          if [ "$(npm view "@jordanallenlewis/sealmark@$VER" version 2>/dev/null)" = "$VER" ]; then
+            echo "@jordanallenlewis/sealmark@$VER is already on GitHub Packages; nothing to publish"
+            exit 0
+          fi
+          npm publish
+          echo "published @jordanallenlewis/sealmark@$VER to GitHub Packages"
