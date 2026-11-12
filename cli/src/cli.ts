@@ -25,7 +25,7 @@ import { inCi } from "./config/index.js";
 import { makeSecretScrubber } from "./report/redact.js";
 import { inertLines } from "./report/sanitize.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
-import { FORMATS, FORMAT_EXT, isFailed, renderReport, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
+import { FORMATS, FORMAT_EXT, isFailed, renderReport, startFailureLine, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
 import { compareBaseline, parseBaseline, type BaselineDiff } from "./report/baseline.js";
 import { decideExit } from "./report/exit.js";
 import { driftFails } from "./report/drift.js";
@@ -246,6 +246,8 @@ async function runCommand(values: Values): Promise<CommandOutput> {
       const hint = harness?.hint ? scrub(harness.hint) : undefined;
       logSafe(`sealmark: harness failure${multi ? ` (server ${s.name})` : ""}: ${message}`);
       if (hint) logSafe(`hint: ${hint}`);
+      const startFailure = harness?.startFailure;
+      if (startFailure) logSafe(startFailureLine(startFailure));
       let stderrFile: string | undefined;
       if (harness?.stderr && stderrBase) {
         stderrFile = stderrLog(s.name);
@@ -263,6 +265,7 @@ async function runCommand(values: Values): Promise<CommandOutput> {
         server: s.name,
         error: message,
         ...(hint ? { hint } : {}),
+        ...(startFailure ? { startFailure } : {}),
         ...(stderrFile ? { stderrFile } : {}),
         sealmark: { version: sealmarkVersion, methodology: cfg.integrity.methodology },
       };
@@ -483,6 +486,7 @@ async function main(argv: string[]): Promise<CommandOutput> {
     if (e instanceof HarnessError) {
       process.stderr.write(`sealmark: harness failure: ${e.message}\n`);
       if (e.hint) process.stderr.write(`hint: ${e.hint}\n`);
+      if (e.startFailure) process.stderr.write(`${startFailureLine(e.startFailure)}\n`);
       return { code: 4 };
     }
     process.stderr.write(`sealmark: unexpected error: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);
