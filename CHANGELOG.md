@@ -6,6 +6,9 @@ What changed in each CLI release and methodology draft (until 2026-11-10 these n
 
 No change to any check or grade. A server that cannot start now gets a typed start failure (`dependency-resolution`, `needs-credentials`, `missing-runtime`, `bad-launch`, `initialize-timeout` or `unknown`) with one line of advice, printed next to the existing error and added to the JSON report as an optional `startFailure: {kind, advice}`; the error text, exit code 4 and `hint` are unchanged. The npm package no longer ships ten stale `dist/* 2.js` modules (Finder copies committed with 0.3.0), a port-in-use error now carries a hint, and `--help` has examples. Methodology stays `0.3-draft`.
 
+- **Opt-in usage counter.** `SEALMARK_TELEMETRY=1` sends one anonymous ping per command (version, command, Node major, OS family, CI flag); off by default, `DO_NOT_TRACK=1` always disables it. The README's "Usage counter" section lists exactly what is sent.
+- **GitHub Packages mirror.** Each release is also published to GitHub Packages after npm; npm stays the primary registry and nothing changes for `npx sealmark`.
+
 ## CLI 1.0.0 (2026-11-09), methodology 0.3-draft
 
 The version bump only: package, lockfile and the pinned version in the action and examples. Methodology stays `0.3-draft`, unchanged from CLI 0.3.0. The CLI version and the methodology version move separately; a methodology change is what can move a grade.

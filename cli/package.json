@@ -37,7 +37,7 @@
     "@types/pg": "^8.23.1",
     "typescript": "^7.0.2"
   },
-  "homepage": "https://sealmark.dev",
+  "homepage": "https://sealmark.dev/?utm_source=npm&utm_medium=referral&utm_campaign=homepage",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jordanallenlewis/sealmark.git",
@@ -57,7 +57,7 @@
   ],
   "author": {
     "name": "Jordan Allen Lewis",
-    "url": "https://jordanallenlewis.com"
+    "url": "https://jordanallenlewis.com/?utm_source=npm&utm_medium=referral&utm_campaign=sealmark-author"
   },
   "publishConfig": {
     "access": "public"

@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://sealmark.dev"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
+  <a href="https://sealmark.dev/?utm_source=github&utm_medium=readme&utm_campaign=sealmark"><img src="assets/logo.svg" alt="Sealmark logo" width="96" height="96"></a>
 </p>
 
 <p align="center">
@@ -114,6 +114,16 @@ The sandbox is a convention the harness follows, not a security boundary. A mali
 
 For the full design (run lifecycle, components, verdict model, trust model, and the alternatives that were rejected and why), read **[`docs/architecture.md`](docs/architecture.md)**.
 
+## Usage counter (off by default)
+
+Sealmark sends nothing unless you set `SEALMARK_TELEMETRY=1`. With it set, each command sends one ping when it finishes, and prints the exact JSON to stderr first:
+
+```json
+{"schema":1,"sealmark":"1.0.1","command":"run","node":22,"os":"linux","ci":false}
+```
+
+That is the CLI version, the command name, the Node major version, the OS family and whether `CI` is set. It never includes the server under test, its tools, your config, paths, results, hostnames or any identifier. The ping goes to `https://sealmark.dev/api/ping` (override with `SEALMARK_TELEMETRY_URL`), times out after 2 seconds, and a failure never changes the exit code. `DO_NOT_TRACK=1` turns it off even when `SEALMARK_TELEMETRY=1` is set. The code is `cli/src/telemetry.ts`.
+
 ## Repository layout
 
 | Path | What |
@@ -127,7 +137,7 @@ The `dist/toy` directory in the npm package holds the synthetic servers the test
 
 Develop: `cd cli && npm run typecheck && npm test`.
 
-The website, its docs and the published results live at [sealmark.dev](https://sealmark.dev).
+The website, its docs and the published results live at [sealmark.dev](https://sealmark.dev/?utm_source=github&utm_medium=readme&utm_campaign=sealmark).
 
 ## Documents
 

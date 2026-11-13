@@ -20,6 +20,7 @@ import {
 } from "./commands.js";
 import { ConfigError, METHODOLOGY, loadEffectiveConfig, type EffectiveConfig } from "./config/index.js";
 import { cliVersion } from "./describe.js";
+import { sendPing } from "./telemetry.js";
 import { inCi } from "./config/index.js";
 import { makeSecretScrubber } from "./report/redact.js";
 import { inertLines } from "./report/sanitize.js";
@@ -365,6 +366,8 @@ async function runCommand(values: Values): Promise<CommandOutput> {
 // dispatch
 // ---------------------------------------------------------------------------------------------------------
 
+let pingCommand: string | undefined;
+
 async function main(argv: string[]): Promise<CommandOutput> {
   let known: string | undefined;
   try {
@@ -383,6 +386,7 @@ async function main(argv: string[]): Promise<CommandOutput> {
     }
     const { command, rest } = m;
     known = command.name;
+    pingCommand = command.name;
     const accepted = new Set(flagsFor(command.name).map((f) => f.name));
     if (command.name === "explain") accepted.add("json");
     for (const [key, v] of Object.entries(values)) {
@@ -491,6 +495,7 @@ async function main(argv: string[]): Promise<CommandOutput> {
 }
 
 const { code, stdout } = await main(process.argv.slice(2));
+await sendPing(cliVersion(), pingCommand);
 // Exit once stdout has flushed so a piped report is never truncated, and stray child handles cannot keep us alive.
 if (stdout) process.stdout.write(stdout, () => process.exit(code));
 else process.exit(code);
