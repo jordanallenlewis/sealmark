@@ -8,6 +8,7 @@ No change to any check or grade. A server that cannot start now gets a typed sta
 
 - **Opt-in usage counter.** `SEALMARK_TELEMETRY=1` sends one anonymous ping per command (version, command, Node major, OS family, CI flag); off by default, `DO_NOT_TRACK=1` always disables it. The README's "Usage counter" section lists exactly what is sent.
 - **GitHub Packages mirror.** Each release is also published to GitHub Packages after npm; npm stays the primary registry and nothing changes for `npx sealmark`.
+- **Dependencies.** Lockfile updates only (hono 4.13.18, @hono/node-server 2.1.8, body-parser 2.4.0, qs 6.17.1, ip-address 10.7.6, fast-uri 3.1.9, zod 4.6.7, @modelcontextprotocol/sdk 1.32.2, @types/node 26.6.6); `npm audit` reports 0 vulnerabilities. No check or grade changes.
 
 ## CLI 1.0.0 (2026-11-09), methodology 0.3-draft
 
