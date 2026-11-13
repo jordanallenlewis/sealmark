@@ -7,7 +7,7 @@ inputs:
   version:
     description: 'Sealmark version to run through npx. The default is the version this action was written against; it must be on npm.'
     required: false
-    default: '1.0.0'
+    default: '1.0.1'
   start:
     description: 'Command line that starts the server over stdio (the same as --start). With url it is started and reached over HTTP.'
     required: false

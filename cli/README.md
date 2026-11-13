@@ -2,7 +2,7 @@
 
 Behavioral conformance tests for MCP servers you run or build. Sealmark starts your server, calls its tools directly with fixed inputs (no LLM in the loop), and reports what happened with evidence for every line. A letter grade summarises each pack.
 
-**Status: methodology 0.3-draft, published on npm as `sealmark`.** Run `npx sealmark`. The CLI is 1.0.0; checks and thresholds can still change before methodology 1.0. Methodology 0.3-draft is not released yet: the standard hash differs from 0.2-draft, so a 0.2-draft report cannot be `--replay`ed and a 0.2-draft baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
+**Status: methodology 0.3-draft, published on npm as `sealmark`.** Run `npx sealmark`. The CLI is 1.0.1; checks and thresholds can still change before methodology 1.0. Methodology 0.3-draft is not released yet: the standard hash differs from 0.2-draft, so a 0.2-draft report cannot be `--replay`ed and a 0.2-draft baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
 
 ## What it covers, and what it does not
 
@@ -240,8 +240,8 @@ Used in `command`, `args`, `env` values, `url`, and `headers` values:
 Every report starts with a header that says which it is:
 
 ```
-sealmark 1.0.0 · methodology 0.3-draft · STANDARD · my-server 1.0.0
-sealmark 1.0.0 · methodology 0.3-draft · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
+sealmark 1.0.1 · methodology 0.3-draft · STANDARD · my-server 1.0.0
+sealmark 1.0.1 · methodology 0.3-draft · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
   timeout_probe_sec: standard 10, effective 2  (flag --timeout-probe)
   packs: standard ["core","db",...], effective ["core"]  (flag --pack)
 ```
@@ -251,7 +251,7 @@ A run is STANDARD only if every setting that affects a grade equals the standard
 ## Reading the report
 
 ```
-sealmark 1.0.0 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
+sealmark 1.0.1 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
 
 server: node dist/toy/server.js --mode nosql
 env:
@@ -398,7 +398,7 @@ sealmark:
   script:
     # first, install your server with its own "- ..." line (for example: - npm ci)
     - >
-      npx -y sealmark@1.0.0 run
+      npx -y sealmark@1.0.1 run
       --start "my-server --port 8000"
       --url http://localhost:8000/mcp
   artifacts:
@@ -435,7 +435,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24 }
       - run: npm ci                  # installs your server
-      - run: npx -y sealmark@1.0.0 run --profile ci --baseline sealmark-baseline.json
+      - run: npx -y sealmark@1.0.1 run --profile ci --baseline sealmark-baseline.json
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: sealmark-report, path: sealmark-report/ }

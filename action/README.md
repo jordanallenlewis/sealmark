@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4   # pin to a commit SHA
-      - uses: jordanallenlewis/sealmark/action@v1.0.0   # or pin a commit SHA
+      - uses: jordanallenlewis/sealmark/action@v1.0.1   # or pin a commit SHA
         with:
           start: npx -y my-mcp-server
           pack: core
@@ -27,7 +27,7 @@ jobs:
 
 One thing must be true before this works:
 
-- The pinned `version` input (default `1.0.0`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`: when the CLI version moves, the `version` default in `action.yml` and in the table below move with it.
+- The pinned `version` input (default `1.0.1`) must be on npm first. The action runs `npx -y sealmark@<version>`, so `uses:` fails until that version is on npm. Set `version` to one that is. The default tracks `cli/package.json`: when the CLI version moves, the `version` default in `action.yml` and in the table below move with it.
 
 With neither `start`, `url` nor `config` the action exits 2 and says `sealmark action: set start and url (or config)`.
 
@@ -37,7 +37,7 @@ All inputs are optional. A flag the CLI has a default for keeps that default whe
 
 | Input | Default | What it does |
 |---|---|---|
-| `version` | `1.0.0` | Sealmark version run through `npx -y sealmark@<version>`. |
+| `version` | `1.0.1` | Sealmark version run through `npx -y sealmark@<version>`. |
 | `start` | | Command that starts the server (`--start`). |
 | `url` | | URL of a Streamable HTTP server (`--url`). |
 | `config` | | Path to a `sealmark.yaml` (`--config`). |
@@ -85,7 +85,7 @@ permissions:
 `bearer-env` is the name of a variable, never its value:
 
 ```yaml
-- uses: jordanallenlewis/sealmark/action@v1.0.0
+- uses: jordanallenlewis/sealmark/action@v1.0.1
   env:
     MCP_TOKEN: ${{ secrets.MCP_TOKEN }}
   with:
