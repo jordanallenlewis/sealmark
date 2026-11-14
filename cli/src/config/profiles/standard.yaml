@@ -1,4 +1,4 @@
-# standard: the published methodology (0.3-draft). The only profile whose grade is "official".
+# standard: the published methodology (1.0). The only profile whose grade is "official".
 # Every setting that affects a grade is listed here with its published value; this file is the appendix of the methodology.
 # Generated from cli/src/config/schema.ts (npm run gen:standard). Do not edit by hand.
 description: The published methodology. A run is STANDARD only when these values are used unchanged.

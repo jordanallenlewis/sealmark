@@ -2,6 +2,10 @@
 
 What changed in each CLI release and methodology draft (until 2026-11-10 these notes opened the README). The full, per-check record of every change that can move a verdict is in [`docs/methodology.md`](docs/methodology.md), "What changed in 0.3-draft". Releases: [GitHub Releases](https://github.com/jordanallenlewis/sealmark/releases) and [npm](https://www.npmjs.com/package/sealmark?activeTab=versions).
 
+## Methodology 1.0 (2026-11-14, ships with the next CLI release)
+
+The methodology is published as 1.0. It is the 0.3-draft methodology with no change to any check, probe, threshold or the grading formula, so no grade moves for a given server. The version string changes, and the standard hash with it (`sha256:d13e7893…` to `sha256:2bea0fff…`): a report or baseline written under `0.3-draft` cannot be `--replay`ed under 1.0 and prints the "different configuration" note. From 1.0 on, any change that can move a verdict bumps the methodology version and is listed here. Candidate checks (the `oauth`, `scope`, `sql-guard` and `upstream` packs, `db-privilege` and the round 6 and 7 advisories) stay outside the standard. [`docs/methodology.md`](docs/methodology.md), "What changed in 1.0".
+
 ## CLI 1.0.1 (2026-11-11), methodology 0.3-draft
 
 No change to any check or grade. A server that cannot start now gets a typed start failure (`dependency-resolution`, `needs-credentials`, `missing-runtime`, `bad-launch`, `initialize-timeout` or `unknown`) with one line of advice, printed next to the existing error and added to the JSON report as an optional `startFailure: {kind, advice}`; the error text, exit code 4 and `hint` are unchanged. The npm package no longer ships ten stale `dist/* 2.js` modules (Finder copies committed with 0.3.0), a port-in-use error now carries a hint, and `--help` has examples. Methodology stays `0.3-draft`.

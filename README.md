@@ -19,7 +19,7 @@ An agent-facing server is easy to configure and hard to trust: read-only flags, 
 
 > **An A means the server passed these specific, published probes with this exact configuration. It is not a security endorsement.** Every report says what was not covered.
 
-Status: CLI 1.0.1, methodology `0.3-draft` (not released yet: checks and thresholds can still change before methodology 1.0, and a 0.2-draft report cannot be replayed under it). What changed: [`CHANGELOG.md`](CHANGELOG.md).
+Status: CLI 1.0.1 on npm, methodology `1.0` (published 2026-11-14 on `main`; it reaches npm with the next CLI release, until then 1.0.1 still reports `0.3-draft`). 1.0 is the 0.3-draft methodology with no check changed; a 0.3-draft report cannot be replayed under it. What changed: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Quickstart
 
@@ -36,7 +36,7 @@ In CI, one command is enough: `npx sealmark run --fail-under B`. See [`cli/READM
 ## What a report looks like
 
 ```
-sealmark 1.0.1 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
+sealmark 1.0.1 · methodology 1.0 · STANDARD · toy-nosql 0.0.1
 
 stdio server, 2 tool(s): echo, add
 sandbox: {sandbox_dir} · env scrubbed · listener 127.0.0.1:{listener_port} · cleaned up
