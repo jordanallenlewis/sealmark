@@ -2,7 +2,7 @@
 
 Behavioral conformance tests for MCP servers you run or build. Sealmark starts your server, calls its tools directly with fixed inputs (no LLM in the loop), and reports what happened with evidence for every line. A letter grade summarises each pack.
 
-**Status: methodology 0.3-draft, published on npm as `sealmark`.** Run `npx sealmark`. The CLI is 1.0.1; checks and thresholds can still change before methodology 1.0. Methodology 0.3-draft is not released yet: the standard hash differs from 0.2-draft, so a 0.2-draft report cannot be `--replay`ed and a 0.2-draft baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
+**Status: methodology 1.0 (published 2026-11-14 on `main`; npm `sealmark` 1.0.1 still reports 0.3-draft until the next release), published on npm as `sealmark`.** Run `npx sealmark`. Methodology 1.0 is the 0.3-draft methodology with no check changed, but the standard hash differs, so a 0.3-draft or earlier report cannot be `--replay`ed under it and an older baseline prints a "different configuration" note. The per-check definitions are in [`docs/methodology.md`](../docs/methodology.md), which also lists what changed in 0.3-draft; `sealmark list-checks`, `sealmark explain <check-id>` and `sealmark describe --json` print the same registry from the code.
 
 ## What it covers, and what it does not
 
@@ -38,7 +38,7 @@ Not built: DNS rebinding (the harness owns no DNS), redirects from a public host
 
 ### Candidate checks
 
-A new scored check changes grades, and a grade is a methodology. So a check that is not yet part of the published standard ships as a **candidate**: it runs in every run and is listed in the report, but in a standard pack it is advisory (never scored), and the standard profile and its hash do not contain it. The candidates are `db-privilege` (pack `db`), the two `core` advisories `refusal-quality` (do refusals tell the caller what to do instead?) and `instructions-hygiene` (do the server's instructions name a tool it does not offer, or match `checks.instructions-hygiene.deny`?), and the checks of the three **candidate packs** `scope`, `sql-guard` and `upstream`, which are scored inside their own pack, labelled `candidate pack` in every report and never make a run badge-eligible (`docs/methodology.md`, "Candidate packs"). `db-privilege` asks whether each of the three server instances connected as exactly the database role it was given. It is advisory because every credential comes from the harness, so a server that behaves correctly would otherwise add one near-automatic point to every db grade and move letters up. Switching a candidate off (`checks.db-privilege.enabled: false`) or scoring it (`severity: scored`) makes the run CUSTOM, like any other check. `net-redirect` was the first candidate (0.2.1); methodology 0.3-draft promoted it to a scored, non-critical standard check (decided by recommendation; the owner may veto). Promoting a candidate into the standard is a methodology change: see `docs/methodology.md`, "Candidate checks".
+A new scored check changes grades, and a grade is a methodology. So a check that is not yet part of the published standard ships as a **candidate**: it runs in every run and is listed in the report, but in a standard pack it is advisory (never scored), and the standard profile and its hash do not contain it. The candidates are `db-privilege` (pack `db`), the two `core` advisories `refusal-quality` (do refusals tell the caller what to do instead?) and `instructions-hygiene` (do the server's instructions name a tool it does not offer, or match `checks.instructions-hygiene.deny`?), and the checks of the three **candidate packs** `scope`, `sql-guard` and `upstream`, which are scored inside their own pack, labelled `candidate pack` in every report and never make a run badge-eligible (`docs/methodology.md`, "Candidate packs"). `db-privilege` asks whether each of the three server instances connected as exactly the database role it was given. It is advisory because every credential comes from the harness, so a server that behaves correctly would otherwise add one near-automatic point to every db grade and move letters up. Switching a candidate off (`checks.db-privilege.enabled: false`) or scoring it (`severity: scored`) makes the run CUSTOM, like any other check. `net-redirect` was the first candidate (0.2.1); methodology 1.0 promoted it to a scored, non-critical standard check (decided by recommendation; the owner may veto). Promoting a candidate into the standard is a methodology change: see `docs/methodology.md`, "Candidate checks".
 
 ## Quickstart
 
@@ -143,7 +143,7 @@ Everything is configurable and nothing configurable is hidden. Layers, lowest to
 5. `SEALMARK_*` environment variables (`SEALMARK_PACKS=core,fs`, `SEALMARK_SANDBOX__DIR=D:\tmp`; a double underscore nests). Every config setting has one, but a flag has one only when it maps onto a setting: `--url` is `SEALMARK_SERVER__URL`, `--start-timeout` is `SEALMARK_SERVER__START_TIMEOUT_SEC`, `--soft-fail` is `SEALMARK_OUTPUT__EXIT_POLICY__SOFT_FAIL`. `--start` has no environment form: `SEALMARK_SERVER__COMMAND` is one program name, not a command line, so set `SEALMARK_SERVER__COMMAND=node SEALMARK_SERVER__ARGS=server.js,--port,8000` (a comma list). `--header` and `--bearer` have none either: a header name from the environment is upper-cased with `_` kept (`SEALMARK_SERVER__HEADERS__X_API_KEY` is sent as `x_api_key`, not `X-Api-Key`), so a hyphenated header needs the flag or a file, and a single-word one such as `Authorization` can also come from `SEALMARK_SERVER__HEADERS__AUTHORIZATION`,
 6. command-line flags.
 
-Lists replace, except the ones that append (`tools.exclude`, corpus `add`/`remove`, `notCovered.extra`, `plugins`); maps merge; `null` resets to the built-in default. `--active` and `--yes` come only from flags. Unknown keys are errors with a did-you-mean and `file:line`. `sealmark config show --origins` prints every value with its origin, secrets redacted and placeholders unexpanded. A JSON Schema for editors is written to `schema/sealmark.schema.json` on build (`init` writes the `yaml-language-server` line that uses it when the package is installed locally, see [Quickstart](#quickstart)). Four older keys are accepted and ignored with a warning, so existing files keep loading: `retries.call` (nothing retries a control call; it was a locked setting that nothing read, and methodology 0.3-draft unlocked and deprecated it), `retries.connect`, `concurrency.*` and `output.interactive`.
+Lists replace, except the ones that append (`tools.exclude`, corpus `add`/`remove`, `notCovered.extra`, `plugins`); maps merge; `null` resets to the built-in default. `--active` and `--yes` come only from flags. Unknown keys are errors with a did-you-mean and `file:line`. `sealmark config show --origins` prints every value with its origin, secrets redacted and placeholders unexpanded. A JSON Schema for editors is written to `schema/sealmark.schema.json` on build (`init` writes the `yaml-language-server` line that uses it when the package is installed locally, see [Quickstart](#quickstart)). Four older keys are accepted and ignored with a warning, so existing files keep loading: `retries.call` (nothing retries a control call; it was a locked setting that nothing read, and methodology 1.0 unlocked and deprecated it), `retries.connect`, `concurrency.*` and `output.interactive`.
 
 ```yaml
 schema_version: 1
@@ -240,8 +240,8 @@ Used in `command`, `args`, `env` values, `url`, and `headers` values:
 Every report starts with a header that says which it is:
 
 ```
-sealmark 1.0.1 · methodology 0.3-draft · STANDARD · my-server 1.0.0
-sealmark 1.0.1 · methodology 0.3-draft · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
+sealmark 1.0.1 · methodology 1.0 · STANDARD · my-server 1.0.0
+sealmark 1.0.1 · methodology 1.0 · CUSTOM (not the published methodology: 2 differences) · my-server 1.0.0
   timeout_probe_sec: standard 10, effective 2  (flag --timeout-probe)
   packs: standard ["core","db",...], effective ["core"]  (flag --pack)
 ```
@@ -251,7 +251,7 @@ A run is STANDARD only if every setting that affects a grade equals the standard
 ## Reading the report
 
 ```
-sealmark 1.0.1 · methodology 0.3-draft · STANDARD · toy-nosql 0.0.1
+sealmark 1.0.1 · methodology 1.0 · STANDARD · toy-nosql 0.0.1
 
 server: node dist/toy/server.js --mode nosql
 env:
@@ -344,7 +344,7 @@ The JUnit and SARIF shapes are checked by the test suite against their required 
 
 `--format badge` writes a flat SVG, `--format shields` a [shields.io endpoint](https://shields.io/endpoint) document. Both are rendered locally from one run and are **self-reported**: Sealmark does not host a badge or vouch for one, and anyone can edit a file they commit.
 
-- **Label** `sealmark 0.3-draft`: the methodology version is always on the badge.
+- **Label** `sealmark 1.0`: the methodology version is always on the badge.
 - **Message** when the run is badge-eligible: one letter per graded pack, in pack order, then `self-reported`, for example `core A · db B · fs A · self-reported` (a run with a provisional grade is not eligible, see below). There is no overall letter; the weakest pack stays visible. The colour follows the worst letter (A bright green, B green, C yellow, D orange, F red).
 - **No badge** for a run that is not eligible, in light grey and never with a letter. There are six messages: `no badge: custom run`, `no badge: core only` (no capability pack was graded; it read `hygiene only` before this round, and the report's `(hygiene only)` coverage tag is separate and unchanged), `no badge: provisional` (a grade rests on a critical check nobody could answer), `no badge: nothing graded`, `no badge: server failed`, and `no badge: not eligible` for any other reason (for example a library caller whose run loaded no configuration). This is the same `badge.eligible` the JSON and the text report carry.
 - **One server.** With several servers the run exits 2 (`run with --server <name>`).

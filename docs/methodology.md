@@ -1,8 +1,8 @@
-# Methodology 0.3-draft
+# Methodology 1.0
 
-Status: **draft. Nothing here is frozen** until it is published with a version number (target: 1.0). Every check, probe, threshold, and the grading formula can still change, and a change will bump the methodology version recorded in each result. A grade from this draft is a local test result, not a public rating.
+Status: **published as 1.0 (2026-11-14, owner decision).** This is the 0.3-draft methodology, promoted without a change to any check, probe, threshold or formula: only the version string, and with it the standard hash, moved. From 1.0 on, a change to a probe, a threshold, a locked setting or the grading formula bumps the methodology version recorded in each result and is listed in the [changelog](../CHANGELOG.md). A grade is still a test result for this exact configuration, not a security endorsement.
 
-Sections 1 to 7 below describe the 0.3-draft build and name the code they were written against. They give the full corpus and verdict rules of the `core` and `db` packs, which are the ones a normal run always meets; the other packs (`sqlite`, `fs`, `net`, `git`, `http`, `effects`, `exec`, custom probes) are summarised in section 1, and `sealmark explain <check-id>` and `sealmark list-checks` print the registry from the code for every check. [What changed in 0.3-draft](#what-changed-in-03-draft) lists every change since 0.2-draft that can move a verdict (its "Round 4" and "Round 5" subsections are the latest, and Round 5 supersedes the round-4 net refusal tiers), and "Candidate checks" below is current for 0.3-draft.
+Sections 1 to 7 below describe the build that became 1.0 (written as 0.3-draft; the section texts keep that name where they say when something was added) and name the code they were written against. They give the full corpus and verdict rules of the `core` and `db` packs, which are the ones a normal run always meets; the other packs (`sqlite`, `fs`, `net`, `git`, `http`, `effects`, `exec`, custom probes) are summarised in section 1, and `sealmark explain <check-id>` and `sealmark list-checks` print the registry from the code for every check. [What changed in 0.3-draft](#what-changed-in-03-draft) lists every change since 0.2-draft that can move a verdict (its "Round 4" and "Round 5" subsections are the latest, and Round 5 supersedes the round-4 net refusal tiers), and "Candidate checks" below is current for 0.3-draft.
 
 What an A means: the server passed these specific, published probes with this exact configuration. It is not a security endorsement, and it says nothing about what the probes do not cover (see [Known blind spots](#known-blind-spots)).
 
@@ -411,6 +411,10 @@ Read this before running against anything you care about.
 9. **Valid-looking input is only sent to harness-owned targets.** Tools classified with medium confidence or higher get probes that point at the sandbox, the loopback listener, the seeded database or a harness-owned program; a tool the harness could not classify is never given a well-formed argument. (It still gets schema-invalid ones in `robust-input`.) Prompt arguments are never probed: the harness lists prompts and scans their text but does not call `prompts/get`.
 10. **Do not publish a result for a named server that shows a failure before the maintainer has seen it.** See `docs/product.md` (disclosure).
 
+## What changed in 1.0
+
+Nothing that can move a verdict. 1.0 is the 0.3-draft methodology published under its final number: every check, probe, corpus, threshold and the grading formula are the ones described in this document and in "What changed in 0.3-draft" below. `METHODOLOGY` in `cli/src/config/model.ts` is `1.0`, which moves the standard hash (`sha256:d13e7893…` under 0.3-draft, `sha256:2bea0fff…` under 1.0) and the generated `standard.yaml` and JSON Schema headers. The `since` field of a check keeps naming the draft that introduced it. A report from an earlier methodology cannot be replayed under 1.0 (see Versioning). Candidate checks stay outside the standard until a later bump promotes them.
+
 ## What changed in 0.3-draft
 
 0.3-draft is a methodology change, made so it can be accepted or rejected as one unit: the verification fixes, the owner decisions the project resolved by recommendation, and one regeneration commit at the end that rewrites the standard hash, the generated `standard.yaml` profile, `profiles.golden.json` and the JSON Schema together. The methodology string stays `0.3-draft` (unreleased). The standard hash (`cli/src/test/fixtures/config/standard.hash.txt`; it was `sha256:c2b6ce21…` under 0.2-draft) moved twice: first through the version string alone, and again in the final commit because **locked leaves changed**: the two settings of `net-redirect` (`checks.net-redirect.enabled` and `.severity`) became locked when it was promoted, and `retries.call` stopped being locked. A report written under 0.2-draft cannot be `--replay`ed under 0.3-draft, and a baseline written under 0.2-draft prints the "different configuration" note.
@@ -671,6 +675,6 @@ The candidate rule in `integrity.ts` stays for the next candidates. What the own
 
 ## Versioning and changes
 
-- The methodology version (`0.3-draft`) and the harness version are recorded in every result.
-- Until 1.0 is published the probes, thresholds, and formula may change without notice, and results from different methodology versions must not be compared.
-- Any change to a probe, threshold, or the formula after 1.0 will bump the methodology version and be listed in the changelog.
+- The methodology version (`1.0`) and the harness version are recorded in every result.
+- Results from different methodology versions must not be compared. A report written under `0.3-draft` or earlier cannot be `--replay`ed under `1.0`, and a baseline written under it prints the "different configuration" note, because the methodology version is part of the standard hash.
+- Any change to a probe, threshold, or the formula after 1.0 bumps the methodology version and is listed in the changelog. The CLI version moves separately: a CLI release that changes no check keeps the methodology version.

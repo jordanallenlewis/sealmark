@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Sealmark configuration",
-  "description": "Configuration for the sealmark CLI (methodology 0.3-draft, config schema_version 1). Generated from cli/src/config/schema.ts; do not edit by hand.",
+  "description": "Configuration for the sealmark CLI (methodology 1.0, config schema_version 1). Generated from cli/src/config/schema.ts; do not edit by hand.",
   "type": "object",
   "properties": {
     "active": {

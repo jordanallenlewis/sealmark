@@ -1,7 +1,7 @@
 import type { ServerSpec, SqlTool } from "../types.js";
 
 /** Printed in every report header and folded into the config hash. Bump with the methodology. */
-export const METHODOLOGY = "0.3-draft";
+export const METHODOLOGY = "1.0";
 /** The newest config file layout this binary understands. */
 export const SCHEMA_VERSION = 1;
 
