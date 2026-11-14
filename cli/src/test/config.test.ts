@@ -576,7 +576,7 @@ describe("integrity: STANDARD vs CUSTOM", () => {
     const c = plain();
     assert.equal(c.integrity.standard, true);
     assert.deepEqual(c.integrity.standardDiff, []);
-    assert.equal(c.integrity.methodology, "0.3-draft");
+    assert.equal(c.integrity.methodology, "1.0");
     assert.equal(c.integrity.profile, "standard");
     assert.equal(c.packsExplicit, false);
   });
@@ -639,14 +639,14 @@ describe("integrity: STANDARD vs CUSTOM", () => {
     assert.notEqual(std("", { flags: { pack: ["core", "fs"] } }).integrity.hash, a.integrity.hash);
   });
 
-  it("pins the standard hash for methodology 0.3-draft (update standard.hash.txt only with a methodology change)", () => {
+  it("pins the standard hash for methodology 1.0 (update standard.hash.txt only with a methodology change)", () => {
     assert.equal(standardHash(), fixture("standard.hash.txt").trim());
   });
 
   it("a plain STANDARD run carries the pinned hash, and the hash recomputes from the embedded locked leaves", () => {
     const c = plain();
     assert.equal(c.integrity.hash, fixture("standard.hash.txt").trim());
-    assert.equal(computeHash(c.integrity.locked, "0.3-draft"), fixture("standard.hash.txt").trim());
+    assert.equal(computeHash(c.integrity.locked, "1.0"), fixture("standard.hash.txt").trim());
     assert.notEqual(computeHash(c.integrity.locked, "0.2-draft"), c.integrity.hash, "the methodology string is part of the digest");
   });
 

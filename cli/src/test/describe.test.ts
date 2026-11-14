@@ -142,7 +142,7 @@ describe("describe --json", () => {
     assert.equal(wire.sealmark.version, pkg.version);
     assert.equal(cliVersion(), pkg.version);
     assert.equal(wire.sealmark.methodology, METHODOLOGY);
-    assert.equal(wire.sealmark.methodology, "0.3-draft", "the published methodology; bump it only together with standard.hash.txt");
+    assert.equal(wire.sealmark.methodology, "1.0", "the published methodology; bump it only together with standard.hash.txt");
   });
 
   it("lists every check the registry emits, once, with severity and pack membership", () => {
