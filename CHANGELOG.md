@@ -2,6 +2,10 @@
 
 What changed in each CLI release and methodology draft (until 2026-11-10 these notes opened the README). The full, per-check record of every change that can move a verdict is in [`docs/methodology.md`](docs/methodology.md), "What changed in 0.3-draft". Releases: [GitHub Releases](https://github.com/jordanallenlewis/sealmark/releases) and [npm](https://www.npmjs.com/package/sealmark?activeTab=versions).
 
+## Next CLI release (unreleased)
+
+- **`run --trace <file>`.** Writes the JSON-RPC wire log of the run: the messages the MCP client sent to the server and received from it, in order, as JSON Lines with the session each belongs to. It is redacted like the report (secrets, JWTs, sandbox paths and per-run ports; nothing with `--no-redact`), capped at 32 MiB (a last line says how many messages were dropped), and written for a failed start too. The `http` and `oauth` packs' own raw HTTP requests and non-JSON-RPC stdout lines are not in it. Off by default; no check, verdict or grade changes.
+
 ## Methodology 1.0 (2026-11-14, ships with the next CLI release)
 
 The methodology is published as 1.0. It is the 0.3-draft methodology with no change to any check, probe, threshold or the grading formula, so no grade moves for a given server. The version string changes, and the standard hash with it (`sha256:d13e7893…` to `sha256:2bea0fff…`): a report or baseline written under `0.3-draft` cannot be `--replay`ed under 1.0 and prints the "different configuration" note. From 1.0 on, any change that can move a verdict bumps the methodology version and is listed here. Candidate checks (the `oauth`, `scope`, `sql-guard` and `upstream` packs, `db-privilege` and the round 6 and 7 advisories) stay outside the standard. [`docs/methodology.md`](docs/methodology.md), "What changed in 1.0".

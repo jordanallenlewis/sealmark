@@ -97,6 +97,7 @@ npx sealmark run
 | `--no-redact` | print secret-looking values and real sandbox paths. Local debugging only; do not share the output |
 | `--baseline <report.json>` | compare with an earlier JSON report and fail on regressions |
 | `--write-baseline <file>` | save this run's JSON for later `--baseline` runs (not written when the run regressed) |
+| `--trace <file>` | write the JSON-RPC messages the MCP client sent to and received from the server, one JSON object per line (`seq`, `ms`, `session`, `dir` send/recv, `message`), redacted like the report unless `--no-redact`. Not included: the raw HTTP requests of the `http` and `oauth` packs and stdout lines that are not JSON-RPC. Written for a failed start too, but not when the run is interrupted; capped at 32 MiB; with several servers, one file each (`run.trace.<server>.jsonl`). A file that cannot be written exits 2. It changes no verdict |
 | `--fail-on any\|regressions\|drift` | what decides exit 1; repeat the flag or comma-separate for several (`output.fail_on`). `any` (default): the gate and regressions. `regressions`: only regressions, with a baseline. `drift`: a breaking or notable tool-surface change against the baseline; alone it turns the grade gate off. `regressions,drift` and `any,drift` combine. `regressions` and `drift` need `--baseline` (exit 2 without one) |
 | `--replay <report.json>` | re-run with the locked settings of an earlier report, after checking its config hash |
 | `--timeout-probe <sec>` | how long the cap and timeout probes wait. Default 10 |

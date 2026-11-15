@@ -255,9 +255,12 @@ function relativeConfigPath(p: string): string {
   return (rel && !rel.startsWith("..") && !isAbsolute(rel) ? rel : (p.split(/[\\/]/).pop() ?? p)).split(sep).join("/");
 }
 
-/** What the renderers print: `r` with sandbox paths and secrets rewritten, unless redaction is off or the sandbox was kept. */
-export function redactResult(r: RunResult, o: RedactOptions = {}): RunResult {
-  if (o.redact === false) return r;
+/**
+ * The rewrite redactResult applies to every string of a run: sandbox paths, the run's ports and per-run tokens (a JWT included), then
+ * secrets. Exported for text that leaves with the report and comes from the same run (the `--trace` wire log). Identity with `--no-redact`.
+ */
+export function runRewriter(r: RunResult, o: RedactOptions = {}): (s: string) => string {
+  if (o.redact === false) return (s) => s;
   const scrub = makeSecretScrubber(o.secrets);
   // A kept sandbox is one the reader will open, so its paths and the tokens in its file names stay as they were.
   const kept = Boolean(r.sandbox?.kept);
@@ -267,8 +270,15 @@ export function redactResult(r: RunResult, o: RedactOptions = {}): RunResult {
   const oauth = (r as { oauth?: { issuer?: unknown; mode?: unknown } }).oauth;
   const issuerPort = oauth?.mode === "stub" && typeof oauth.issuer === "string" ? Number(/:(\d+)\/?$/.exec(oauth.issuer)?.[1]) || null : null;
   const run = kept ? (s: string) => s : makeRunNormaliser({ listenerPort: r.sandbox?.listenerPort, upstreamPort, issuerPort });
+  return (s) => (KEPT.test(s) ? s : scrub(run(paths(s))));
+}
+
+/** What the renderers print: `r` with sandbox paths and secrets rewritten, unless redaction is off or the sandbox was kept. */
+export function redactResult(r: RunResult, o: RedactOptions = {}): RunResult {
+  if (o.redact === false) return r;
+  const kept = Boolean(r.sandbox?.kept);
   const checks = new Set<object>(Array.isArray(r.checks) ? r.checks : []);
-  const out = redactDeep(r, (s) => (KEPT.test(s) ? s : scrub(run(paths(s)))), (k, parent) => (CHECK_NAME_FIELDS.has(k) && checks.has(parent)) || (k === "startedAt" && parent === r));
+  const out = redactDeep(r, runRewriter(r, o), (k, parent) => (CHECK_NAME_FIELDS.has(k) && checks.has(parent)) || (k === "startedAt" && parent === r));
   const finished = out.config?.path ? { ...out, config: { ...out.config, path: relativeConfigPath(out.config.path) } } : out;
   // The stub's address names this run's ephemeral port: the report carries the placeholder (the sentence in types.ts: `url` printed as "{upstream}").
   const shown = (finished as { upstream?: { url?: unknown } }).upstream;
@@ -313,10 +323,16 @@ function rewriteFailureText(s: string): string {
   return makeRunNormaliser(null)(out + s.slice(last));
 }
 
+/** The rewrite redactFailed applies, for other text from a run that failed before it produced a result (the `--trace` wire log). */
+export function failureRewriter(o: RedactOptions = {}): (s: string) => string {
+  if (o.redact === false) return (s) => s;
+  const scrub = makeSecretScrubber(o.secrets);
+  return (t) => scrub(rewriteFailureText(t));
+}
+
 /** A run that failed before it produced a result: its message can carry the server's own output, secrets and the sandbox path included. */
 export function redactFailed<T extends { error: string; hint?: string }>(f: T, o: RedactOptions = {}): T {
   if (o.redact === false) return f;
-  const scrub = makeSecretScrubber(o.secrets);
-  const clean = (t: string) => scrub(rewriteFailureText(t));
+  const clean = failureRewriter(o);
   return { ...f, error: clean(f.error), ...(f.hint ? { hint: clean(f.hint) } : {}) };
 }

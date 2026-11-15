@@ -195,6 +195,8 @@ export interface OutputSettings {
   template: string | null;
   baseline: string | null;
   write_baseline: string | null;
+  /** `run --trace`: write the JSON-RPC wire log (JSON Lines, secrets scrubbed) to this file. */
+  trace: string | null;
   fail_on: ("any" | "regressions" | "drift")[];
   exit_policy: {
     fail_under: "A" | "B" | "C" | "D" | "F" | null;

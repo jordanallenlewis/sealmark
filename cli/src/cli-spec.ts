@@ -185,7 +185,7 @@ function metavarFor(name: string): string {
   if (name === "name") return "<name>";
   if (name === "fail-under") return "<A-F>";
   if (name === "timeout-probe" || name === "connect-timeout" || name === "pack-timeout") return "<sec>";
-  if (name === "config" || name === "out" || name === "baseline" || name === "write-baseline" || name === "template") return "<file>";
+  if (name === "config" || name === "out" || name === "baseline" || name === "write-baseline" || name === "trace" || name === "template") return "<file>";
   if (name === "out-dir" || name === "sandbox-dir") return "<dir>";
   return "<value>";
 }

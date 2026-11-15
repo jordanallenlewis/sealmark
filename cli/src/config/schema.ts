@@ -367,6 +367,7 @@ function build(): Leaf[] {
     L("output.template", "string", null, "Path of a report template. Templates never change the result data.", { nullable: true }),
     L("output.baseline", "string", null, "Prior JSON report to compare against (--baseline).", { nullable: true }),
     L("output.write_baseline", "string", null, "Write the current JSON report here for later --baseline runs (--write-baseline).", { nullable: true }),
+    L("output.trace", "string", null, "Write the JSON-RPC messages the MCP client sent to and received from the server to this file, one JSON object per line, redacted like the report (--trace). For debugging a verdict; it changes no verdict.", { since: S03, nullable: true }),
     L("output.fail_on", "string[]", ["any"], "With a baseline, what decides the exit code: any (the gate and regressions, the default), regressions (regressions only), drift (breaking or notable tool-surface drift). A list: fail_on: [regressions, drift].", {
       enum: FAIL_ON,
       shape: { k: "array", item: { k: "enum", values: FAIL_ON }, scalar: true },
