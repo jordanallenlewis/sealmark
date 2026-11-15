@@ -99,6 +99,7 @@ export const FLAG_DEFS: readonly FlagDef[] = [
   { name: "template", path: "output.template", kind: "string", description: "Report template path." },
   { name: "baseline", path: "output.baseline", kind: "string", description: "Prior JSON report to compare against." },
   { name: "write-baseline", path: "output.write_baseline", kind: "string", description: "Write the current JSON report for later --baseline runs." },
+  { name: "trace", path: "output.trace", kind: "string", description: "Write the JSON-RPC messages the MCP client sent to and received from the server to this file (JSON Lines, redacted like the report). For debugging a verdict; it changes no verdict." },
   { name: "fail-on", path: "output.fail_on", kind: "list", description: "With a baseline, what decides the exit code: any (the default), regressions or drift; repeat the flag or comma-separate for several." },
   { name: "verbosity", path: "output.verbosity", kind: "string", description: "quiet, normal or verbose." },
   { name: "redact", path: "output.redact", kind: "boolean", negatable: true, description: "--no-redact prints secret-looking values (local debugging only)." },

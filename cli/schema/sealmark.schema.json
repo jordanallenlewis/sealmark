@@ -3498,6 +3498,21 @@
             "flagOnly": false
           }
         },
+        "trace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Write the JSON-RPC messages the MCP client sent to and received from the server to this file, one JSON object per line, redacted like the report (--trace). For debugging a verdict; it changes no verdict.",
+          "default": null,
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
         "verbosity": {
           "enum": [
             "quiet",
@@ -8521,6 +8536,21 @@
               "default": null,
               "x-sealmark": {
                 "since": "0.2-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "trace": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Write the JSON-RPC messages the MCP client sent to and received from the server to this file, one JSON object per line, redacted like the report (--trace). For debugging a verdict; it changes no verdict.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
                 "standardLocked": false,
                 "mergeable": false,
                 "secret": false,

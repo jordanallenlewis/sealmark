@@ -22,7 +22,7 @@ import { ConfigError, METHODOLOGY, loadEffectiveConfig, type EffectiveConfig } f
 import { cliVersion } from "./describe.js";
 import { sendPing } from "./telemetry.js";
 import { inCi } from "./config/index.js";
-import { makeSecretScrubber } from "./report/redact.js";
+import { failureRewriter, makeSecretScrubber, runRewriter } from "./report/redact.js";
 import { inertLines } from "./report/sanitize.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
 import { FORMATS, FORMAT_EXT, isFailed, renderReport, startFailureLine, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
@@ -31,6 +31,7 @@ import { decideExit } from "./report/exit.js";
 import { driftFails } from "./report/drift.js";
 import { diffCommand } from "./diff.js";
 import { secretLiterals } from "./report/secrets.js";
+import { TraceRecorder, type WireEvent } from "./trace.js";
 import { setCallEvidence } from "./packs/core.js";
 import { interruptCode, wasInterrupted } from "./launch.js";
 import { HarnessError, runHarness } from "./run.js";
@@ -139,6 +140,11 @@ function ensureWritable(target: string, what: string, kind: "dir" | "file"): voi
 }
 
 const safeName = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "_");
+/** `run.trace.jsonl` + `clean` -> `run.trace.clean.jsonl`; a path without an extension gets `.clean` appended. */
+const perServerPath = (path: string, name: string): string => {
+  const m = /^(.*[^/\\])(\.[^./\\]+)$/.exec(path);
+  return m ? `${m[1]}.${name}${m[2]}` : `${path}.${name}`;
+};
 
 async function runCommand(values: Values): Promise<CommandOutput> {
   if (values.fixture !== undefined) return await fixtureCommand(values.fixture, values.into as string | undefined, logErr);
@@ -187,6 +193,7 @@ async function runCommand(values: Values): Promise<CommandOutput> {
     else if (o.out) ensureWritable(resolve(o.out), "--out", "file");
   }
   if (o.write_baseline) ensureWritable(resolve(o.write_baseline), "--write-baseline", "file");
+  if (o.trace) ensureWritable(resolve(o.trace), "--trace", "file");
   const template = o.template ? readText(o.template, "the report template") : undefined;
   if (template && !formats.some((f) => f === "text" || f === "markdown")) logErr("warning: a report template applies to the text and markdown formats only; it is ignored here");
   // fail_on is a set: any = the gate and regressions, regressions = regressions only, drift = breaking or notable tool-surface drift.
@@ -218,24 +225,31 @@ async function runCommand(values: Values): Promise<CommandOutput> {
   const stderrLog = (name: string) => `${stderrBase}${multi ? `.${safeName(name)}` : ""}.stderr.log`;
   // A server's stderr from an earlier failed run must not sit next to this run's (maybe green) report and be uploaded with it.
   if (stderrBase) for (const s of cfg.servers) rmSync(stderrLog(s.name), { force: true });
+  /** --trace: one wire log per server (with several servers, the server name goes before the extension). Written after the runs. */
+  const traces: { path: string; recorder: TraceRecorder; rewrite: (s: string) => string }[] = [];
   for (const s of cfg.servers) {
     if (multi) log(`== server ${s.name} ==`);
     const eff: EffectiveConfig = { ...cfg, name: s.name, server: s.spec, servers: [s] };
+    const trace = o.trace ? new TraceRecorder() : undefined;
+    // Redacted like the report: like a failed run's message until the run has a result, then like the result (its sandbox path and ports).
+    const traced = trace ? { path: multi ? perServerPath(resolve(o.trace!), safeName(s.name)) : resolve(o.trace!), recorder: trace, rewrite: failureRewriter(ropts) } : undefined;
+    if (traced) traces.push(traced);
     try {
-      runs.push(
-        await runHarness({
-          config: toSealmarkConfig(eff),
-          effective: eff,
-          packs: cfg.packs as PackId[],
-          packsExplicit: cfg.packsExplicit,
-          pg: cfg.db.pg ?? undefined,
-          embedded: cfg.db.embedded ?? undefined,
-          yes: cfg.yes,
-          active: cfg.active,
-          timeoutProbeSec: cfg.timeoutProbeSec,
-          log,
-        }),
-      );
+      const result = await runHarness({
+        config: toSealmarkConfig(eff),
+        effective: eff,
+        packs: cfg.packs as PackId[],
+        packsExplicit: cfg.packsExplicit,
+        pg: cfg.db.pg ?? undefined,
+        embedded: cfg.db.embedded ?? undefined,
+        yes: cfg.yes,
+        active: cfg.active,
+        timeoutProbeSec: cfg.timeoutProbeSec,
+        log,
+        ...(trace ? { onWire: (e: WireEvent) => trace.record(e) } : {}),
+      });
+      runs.push(result);
+      if (traced) traced.rewrite = runRewriter(result, ropts);
     } catch (e) {
       // A config problem keeps its exit 2; anything else that is not a HarnessError is this server's failure, not everyone's.
       if (e instanceof ConfigError || e instanceof UsageError) throw e;
@@ -327,6 +341,16 @@ async function runCommand(values: Values): Promise<CommandOutput> {
     // Only the grade gate is softened; harness errors (2, 3, 4) must still fail the job.
     logErr("soft-fail: the gate (a grade below --fail-under, an inconclusive pack counted as failing, a critical-fail exit code, or a baseline regression) would exit 1; exiting 0 because --soft-fail is set");
     exitCode = 0;
+  }
+
+  // ---- trace: kept for a failed run too, where the startup exchange is often the whole story ----
+  for (const t of traces) {
+    try {
+      writeOut(t.path, t.recorder.text(t.rewrite));
+      logErr(`trace written to ${t.path}`);
+    } catch (e) {
+      writeFailures.push(`could not write the trace to ${t.path}: ${fsReason(e)}`);
+    }
   }
 
   // ---- write-baseline: a ratchet never moves down on its own ----

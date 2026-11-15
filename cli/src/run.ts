@@ -32,6 +32,7 @@ import { ROLES, ROLE_PASSWORD, SEED_DB, SEED_VERSION, deprovision, parseDsn, pro
 import { ensureSqliteFixture } from "./sqlite-fixtures.js";
 import { stageFiles } from "./staged-files.js";
 import { captureSurface } from "./surface.js";
+import type { WireEvent } from "./trace.js";
 import { CANDIDATE_PACKS, type AuthServerStub, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
 
 export interface RunOptions {
@@ -55,6 +56,8 @@ export interface RunOptions {
   active?: boolean;
   timeoutProbeSec: number;
   log: (s: string) => void;
+  /** `run --trace`: every JSON-RPC message of every server session this run opens. Changes nothing the run decides. */
+  onWire?: (e: WireEvent) => void;
 }
 
 /** The harness itself failed (server would not start, database unavailable). The CLI exits 4. */
@@ -210,6 +213,7 @@ export function legacyEffectiveConfig(o: { config: SealmarkConfig; packs: PackId
       template: null,
       baseline: null,
       write_baseline: null,
+      trace: null,
       fail_on: ["any"],
       exit_policy: { fail_under: null, regressions_only: false, soft_fail: false, treat_inconclusive_as: "fail", critical_fail: 0 },
     },
@@ -716,11 +720,15 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
             ? { cwd: sb.root, baseEnv: sb.env(), envMode: "scrubbed" }
             : { cwd: sb.root, envMode: "inherit" }
           : { cleanCwd: true, envMode: "inherit" };
+    /** Counts every server session the run starts, so a trace line says which one it belongs to. */
+    let sessionsOpened = 0;
     const open = async (ctx: TemplateCtx, extra: OpenOptions = {}): Promise<McpSession> => {
       // After a signal nothing starts again: a server spawned now would be in no list the cleanup sweeps, and would hold the sandbox open.
       if (finished) throw new SessionError("the run was interrupted, so the server was not started again");
+      const index = sessionsOpened++;
       const s = await McpSession.open(spec, ctx, {
         clientVersion,
+        ...(opts.onWire ? { onMessage: (dir: "send" | "recv", message: unknown) => opts.onWire!({ session: index, dir, message }) } : {}),
         connectTimeoutMs: eff.timeouts.connect_ms,
         onProgress: log,
         ...(logObs && transport === "stdio" ? { onStderr: (chunk: string) => logObs.push(chunk, "stderr") } : {}),
