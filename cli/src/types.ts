@@ -229,6 +229,11 @@ export interface CheckResult {
   evidence: Evidence[];
   coverage?: CheckCoverage;
   enforcedBy?: "server" | "database" | "unknown";
+  /**
+   * `run --trace` only: the server sessions (the trace lines' `session`) this check's test area opened, so the messages behind the
+   * verdict can be found in the trace file. Absent without `--trace`, and on checks computed from several test areas' evidence.
+   */
+  trace?: { sessions: number[] };
 }
 
 export interface PackGrade {

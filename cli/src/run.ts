@@ -722,10 +722,14 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           : { cleanCwd: true, envMode: "inherit" };
     /** Counts every server session the run starts, so a trace line says which one it belongs to. */
     let sessionsOpened = 0;
-    const open = async (ctx: TemplateCtx, extra: OpenOptions = {}): Promise<McpSession> => {
+    /** `run --trace`: which test area opened each session (by index), so every check can name the sessions behind its verdict. */
+    const sessionOwner = new Map<number, PackId>();
+    const open = async (ctx: TemplateCtx, extra: OpenOptions = {}, owner?: PackId): Promise<McpSession> => {
       // After a signal nothing starts again: a server spawned now would be in no list the cleanup sweeps, and would hold the sandbox open.
       if (finished) throw new SessionError("the run was interrupted, so the server was not started again");
       const index = sessionsOpened++;
+      // Claimed before the start, so a session that fails during initialize still points to the messages it exchanged.
+      if (opts.onWire && owner) sessionOwner.set(index, owner);
       const s = await McpSession.open(spec, ctx, {
         clientVersion,
         ...(opts.onWire ? { onMessage: (dir: "send" | "recv", message: unknown) => opts.onWire!({ session: index, dir, message }) } : {}),
@@ -744,13 +748,13 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     };
 
     /** Per-caller sessions for one pack: `{bearer}` is that identity's value, or (null) every header that holds `{bearer}` is dropped. */
-    const identityFor = (mine: McpSession[], over: () => boolean): IdentityAccess => ({
+    const identityFor = (mine: McpSession[], over: () => boolean, owner: PackId): IdentityAccess => ({
       identities: [
         { name: "a", bearer: bearers.a },
         { name: "b", bearer: bearers.b },
       ],
       openAs: async (who) => {
-        const s = await open(withEnv({ vars: { ...harnessVars(), ...(who ? { bearer: bearers[who] } : {}) }, dsns: {} }), who === null ? { anonymous: true } : {});
+        const s = await open(withEnv({ vars: { ...harnessVars(), ...(who ? { bearer: bearers[who] } : {}) }, dsns: {} }), who === null ? { anonymous: true } : {}, owner);
         if (over()) {
           await s.close();
           throw new SessionError("the pack was already stopped, so the server was stopped again");
@@ -767,7 +771,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     /** Round 7: the server refused the token the stub issuer signed, so no tool can be reached; the oauth pack still runs and says why. */
     let oauthRejected: { status: number; detail: string } | undefined;
     try {
-      session = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv });
+      session = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv }, "core");
     } catch (e) {
       const rejected = e instanceof SessionError && authStub && transport === "http" ? await tokenRefused(spec, baseCtx()) : undefined;
       if (rejected) {
@@ -857,7 +861,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         if (eff.probes.length) {
           // A valid call with `identity:` opens its own session as that caller; those sessions are closed with the core phase.
           const coreMine: McpSession[] = [];
-          const coreIdentity = transport === "http" && bearerUsed ? identityFor(coreMine, () => false) : undefined;
+          const coreIdentity = transport === "http" && bearerUsed ? identityFor(coreMine, () => false, "core") : undefined;
           try {
             valid = await track(runValidCalls({ session, probes: eff.probes, tools: visibleTools, classification, sandbox: sb, active, defaultTimeoutMs: eff.timeouts.probe_ms, canaries: scanSecrets, listenerReachable: listenerReachable(spec, eff.env).ok, ...rulesEnv, ...(coreIdentity ? { openAs: coreIdentity.openAs } : {}), plan }));
           } finally {
@@ -912,7 +916,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
             sqlTools,
             timeoutSec: timeoutProbeSec,
             log,
-            open: (role) => open(roleCtx(role)),
+            open: (role) => open(roleCtx(role), {}, "db"),
             checks: eff.checks,
             ...(typeof eff.checks["db-rowcap"]?.row_cap === "number" ? { rowCap: eff.checks["db-rowcap"].row_cap } : {}),
             ...(typeof eff.checks["db-timeout"]?.expected_sec === "number" ? { expectedSec: eff.checks["db-timeout"].expected_sec } : {}),
@@ -1023,7 +1027,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         sandboxEnabled: sandboxOn,
         open: async () => {
           // The admin role's connection strings, as the discovery session has them: a server that cannot start without {dsn} must be startable by every pack.
-          const s = await open(db ? roleCtx("admin") : baseCtx());
+          const s = await open(db ? roleCtx("admin") : baseCtx(), {}, pack.id);
           if (packOver) {
             await s.close();
             throw new SessionError("the pack was already stopped, so the server was stopped again");
@@ -1042,7 +1046,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         vars: harnessVars(),
         ...(upstreamStub ? { upstream: upstreamStub } : {}),
         ...(logObs ? { serverLog: logObs } : {}),
-        ...(transport === "http" && bearerUsed ? { identity: identityFor(mine, () => packOver) } : {}),
+        ...(transport === "http" && bearerUsed ? { identity: identityFor(mine, () => packOver, pack.id) } : {}),
         ...(authStub ? { authServer: authStub } : {}),
         ...(oauthCfg.issuer ? { oauth: { issuer: oauthCfg.issuer, audience, scopes: oauthCfg.scopes, clientId: oauthCfg.client_id, ...(oauthRejected ? { controlRejected: oauthRejected } : {}) } } : {}),
       };
@@ -1102,6 +1106,18 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         checks.push(refusalQuality(checks, eff));
       } catch (e) {
         warnings.push(`refusal-quality could not be computed: ${(e as Error).message}`);
+      }
+    }
+
+    // ---- run --trace: each check names the sessions its test area opened (the trace lines' `session`) ----
+    // refusal-quality is read from every test area's evidence afterwards, so no one area's sessions decided it.
+    if (opts.onWire) {
+      const byPack = new Map<PackId, number[]>();
+      for (const [index, owner] of sessionOwner) byPack.set(owner, [...(byPack.get(owner) ?? []), index]);
+      for (let i = 0; i < checks.length; i++) {
+        const c = checks[i]!;
+        const sessions = byPack.get(c.pack);
+        if (c.id !== "refusal-quality" && sessions?.length) checks[i] = { ...c, trace: { sessions: [...sessions].sort((a, b) => a - b) } };
       }
     }
 
