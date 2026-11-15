@@ -5,6 +5,7 @@ What changed in each CLI release and methodology draft (until 2026-11-10 these n
 ## Next CLI release (unreleased)
 
 - **`run --trace <file>`.** Writes the JSON-RPC wire log of the run: the messages the MCP client sent to the server and received from it, in order, as JSON Lines with the session each belongs to. It is redacted like the report (secrets, JWTs, sandbox paths and per-run ports; nothing with `--no-redact`), capped at 32 MiB (a last line says how many messages were dropped), and written for a failed start too. The `http` and `oauth` packs' own raw HTTP requests and non-JSON-RPC stdout lines are not in it. Off by default; no check, verdict or grade changes.
+- **`run --trace`: each check names its sessions.** With `--trace`, every check in the JSON report carries `trace.sessions`: the server sessions its test area opened, which are the `session` values of its lines in the trace file. `refusal-quality` has none, because it is read from every test area's evidence. Without `--trace` the report is unchanged. No check, verdict or grade changes.
 
 ## Methodology 1.0 (2026-11-14, ships with the next CLI release)
 

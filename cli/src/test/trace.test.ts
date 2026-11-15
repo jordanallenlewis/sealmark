@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { failureRewriter, makeSecretScrubber } from "../report/redact.js";
 import { TraceRecorder } from "../trace.js";
@@ -137,6 +138,45 @@ describe("cli: run --trace", { timeout: 300_000 }, () => {
     const r = sealmark(["run", "--config", cfg, ...FAST, "--trace", join(cfg, "t.jsonl")]);
     assert.equal(r.code, 2, r.err);
     assert.match(r.err, /--trace/);
+  });
+
+  it("links each check to the trace sessions its test area used, and only with --trace", () => {
+    // The net toy, so two test areas run and the link has to tell their sessions apart: net opens sessions of its own.
+    const NET = fileURLToPath(new URL("../toy/net.js", import.meta.url));
+    const sandboxes = join(dir, "sandboxes");
+    mkdirSync(sandboxes, { recursive: true });
+    const cfg = writeYaml("trace4.yaml", `name: links\nversion: 1.0.0\nserver:\n  command: ${JSON.stringify(process.execPath)}\n  args: ${JSON.stringify([NET, "--mode", "good"])}\nsandbox:\n  dir: ${JSON.stringify(sandboxes)}\n`);
+    const tracePath = join(dir, "links.trace.jsonl");
+    const TWO = ["--pack", "core", "--pack", "net", "--timeout-probe", "2", "--fail-under", "none"];
+    const traced = sealmark(["run", "--config", cfg, ...TWO, "--format", "json", "--trace", tracePath]);
+    assert.equal(traced.code, 0, traced.err);
+    const inTrace = new Set(parse(readFileSync(tracePath, "utf8")).map((l) => l.session));
+    const r = JSON.parse(traced.out) as RunResult;
+    const owner = new Map<number, string>();
+    let linked = 0;
+    for (const c of r.checks) {
+      // refusal-quality is computed afterwards from every pack's evidence, so no one session decided it.
+      if (c.id === "refusal-quality") {
+        assert.equal(c.trace, undefined);
+        continue;
+      }
+      assert.ok(c.trace && c.trace.sessions.length > 0, `${c.id} has no trace link`);
+      for (const n of c.trace.sessions) {
+        assert.ok(inTrace.has(n), `${c.id} names session ${n}, which is not in the trace`);
+        // a session belongs to one test area
+        assert.equal(owner.get(n) ?? c.pack, c.pack, `session ${n} is named by ${owner.get(n)} and ${c.pack}`);
+        owner.set(n, c.pack);
+      }
+      linked++;
+    }
+    assert.ok(linked > 3, `only ${linked} checks linked`);
+    assert.ok(r.checks.filter((c) => c.pack === "core" && c.id !== "refusal-quality").every((c) => c.trace?.sessions.includes(0)), "core checks do not name the first session");
+
+    assert.ok(owner.size > 1 && new Set(owner.values()).size > 1, `sessions of only one test area: ${JSON.stringify([...owner])}`);
+
+    const plain = sealmark(["run", "--config", cfg, ...TWO, "--format", "json"]);
+    assert.equal(plain.code, 0, plain.err);
+    assert.ok((JSON.parse(plain.out) as RunResult).checks.every((c) => c.trace === undefined), "a check names trace sessions without --trace");
   });
 
   it("without --trace no trace file is written", () => {
