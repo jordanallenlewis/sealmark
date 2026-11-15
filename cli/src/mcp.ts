@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { DEFAULT_INHERITED_ENV_VARS, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { ErrorCode, McpError, type JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { expand, type TemplateCtx } from "./config.js";
 import { snapshotTree, snapshotTreeInfo, terminatePids, terminateRemembered, trackRoot, untrackRoot, type ProcInfo } from "./observers/process.js";
 import { createTempCwd } from "./sandbox.js";
@@ -107,6 +107,11 @@ export interface OpenOptions {
   listExtras?: boolean;
   /** Called with every chunk the stdio server writes to stderr (feeds the log observer). */
   onStderr?: (chunk: string) => void;
+  /**
+   * Sees every JSON-RPC message on the wire, as sent ("send") and as received ("recv"), before the client handles it (`run --trace`).
+   * Read-only: it must not change a message, and an exception it throws is swallowed.
+   */
+  onMessage?: (dir: "send" | "recv", message: JSONRPCMessage) => void;
   /** HTTP: send no credential. Every header whose configured value holds a {bearer} placeholder is dropped. */
   anonymous?: boolean;
 }
@@ -257,6 +262,26 @@ function stdoutNoiseOf(e: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Wraps a transport so `tap` sees each message on the wire. Set before connect(): the client chains an onmessage that is already there,
+ * so the tap sees every received message first; send() is wrapped in place. The tap never changes a message and never throws into the session.
+ */
+function tapMessages(transport: StdioClientTransport | StreamableHTTPClientTransport, tap: (dir: "send" | "recv", message: JSONRPCMessage) => void): void {
+  const safe = (dir: "send" | "recv", message: JSONRPCMessage) => {
+    try {
+      tap(dir, message);
+    } catch {
+      /* a trace must never take the session down */
+    }
+  };
+  const send = transport.send.bind(transport) as (message: JSONRPCMessage, options?: unknown) => Promise<void>;
+  (transport as { send: (message: JSONRPCMessage, options?: unknown) => Promise<void> }).send = (message, options) => {
+    safe("send", message);
+    return send(message, options);
+  };
+  transport.onmessage = (message: JSONRPCMessage) => safe("recv", message);
+}
+
 export class McpSession {
   tools: ToolInfo[] = [];
   serverInfo: ServerInfo = {};
@@ -337,6 +362,7 @@ export class McpSession {
         maxBufferSize: MAX_MESSAGE_BYTES,
       });
     }
+    if (opts.onMessage) tapMessages(transport, opts.onMessage);
     const client = new Client({ name: "sealmark", version: opts.clientVersion ?? "0.1.0" }, { capabilities: {} });
     const s = new McpSession(client, transport);
     s.tempCwd = tempCwd;
