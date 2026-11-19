@@ -440,6 +440,7 @@ These are by design or not yet built. Every report lists the relevant ones under
 | `cli/src/probes.ts`, `cli/src/plugins.ts` | Custom probes and plugin packs |
 | `cli/src/grade.ts` | The grading function |
 | `cli/src/report/`, `cli/src/report.ts` | Renderers, sanitizing, redaction, baseline, exit codes |
+| `cli/src/badge-snippet.ts` | `sealmark badge`: README snippets (Markdown, HTML, reStructuredText) for a sealmark.dev badge or a committed self-reported one; text only, no network, reads no report |
 | `cli/src/toy/` | Deliberately good and bad toy servers that every check is tested against; `scoped-http.ts` is the round 6 fixture (a policy-heavy data server with 21 broken modes and 5 near misses, `test/r6-fixture.e2e.test.ts`) |
 | `cli/src/test/` | The test suite |
 | `cli/schema/` | The generated JSON Schema for config |

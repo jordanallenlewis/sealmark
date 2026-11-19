@@ -52,10 +52,12 @@ All inputs are optional. A flag the CLI has a default for keeps that default whe
 | `report-dir` | `sealmark-report` | Directory for the report files, relative to `working-directory`. |
 | `upload-sarif` | `true` | Upload the SARIF file to code scanning. |
 | `artifact` | `true` | Keep the report directory as an artifact named `sealmark-report`. |
+| `badge` | `auto` | `auto` also writes the self-reported badge (`sealmark-report.badge.svg`, `sealmark-report.shields.json`) when the run grades one server: `start` or `url` without `config`, or `--server <name>` in `args`. `true` always asks for them (the CLI exits 2 for several servers); `false` never. See [Badge](#badge). |
+| `badge-id` | | A sealmark.dev server id (`https://sealmark.dev/results/<id>/`): fills the `badge-markdown`, `badge-html` and `badge-rst` outputs and the job summary with that badge. Nothing is fetched. |
 | `node-version` | `24` | Node version for `actions/setup-node`. Sealmark needs 22.13 or newer. |
 | `working-directory` | `.` | Directory to run in. |
 
-The action always adds `--format summary,json,junit,sarif --out-dir <report-dir>`. The summary prints in the job log; the other three are files: `sealmark-report.json`, `sealmark-report.junit.xml` and `sealmark-report.sarif`.
+The action always adds `--format summary,json,junit,sarif --out-dir <report-dir>` (with `badge,shields` added to the list when `badge` is on). The summary prints in the job log; the other three are files: `sealmark-report.json`, `sealmark-report.junit.xml` and `sealmark-report.sarif`.
 
 ## Outputs
 
@@ -67,8 +69,34 @@ The action always adds `--format summary,json,junit,sarif --out-dir <report-dir>
 | `sarif` | Absolute path of the SARIF report; empty when it was not written. |
 | `junit` | Absolute path of the JUnit report; empty when it was not written. |
 | `summary` | One line of graded packs, for example `core A · db B`. Several servers read `a: core A | b: core B`; a server that did not start reads `failed`. |
+| `badge` | Absolute path of the self-reported badge SVG; empty when it was not written. |
+| `shields` | Absolute path of the self-reported shields.io endpoint document; empty when it was not written. |
+| `badge-text` | What this run's self-reported badge says, for example `sealmark 0.3-draft: core A · fs B · self-reported` or `sealmark 0.3-draft: no badge: core only` (the label carries the methodology of the pinned CLI); empty when this run wrote none. |
+| `badge-markdown` | With `badge-id`: the Markdown snippet for the sealmark.dev badge. Empty otherwise. |
+| `badge-html` | With `badge-id`: the HTML snippet. Empty otherwise. |
+| `badge-rst` | With `badge-id`: the reStructuredText snippet (three lines). Empty otherwise. |
 
-The one-line summary is also appended to the job summary page under `## Sealmark`.
+The one-line summary is also appended to the job summary page under `## Sealmark`, followed by a `### Badge` section when there is a badge to show.
+
+## Badge
+
+Two different badges, never mixed:
+
+- **Self-reported** (`badge`): the run's own badge, the same SVG and shields.io document as `sealmark run --format badge,shields`. Its message ends in `self-reported`, and a run that is not badge-eligible gets a grey `no badge: <reason>`. It lands in the report directory and the artifact; to show it in a README, commit one from a run on your main branch (the CLI README, "Badge", has the snippet). `badge-text` says what it reads. Old badge files in the report directory are removed before the run, so the outputs always describe this run.
+- **sealmark.dev** (`badge-id`): the badge the public fleet's grade earns at `https://sealmark.dev/results/<id>/`. The snippets are the ones that page's copy buttons give (and `sealmark badge --id <id>` prints from the next CLI release). The image exists only while that server's latest fleet run earns a badge (the results page then shows one); for any other server, a graded one with a core-only or provisional result included, it is a 404. The action builds the text and fetches nothing, so check the page first.
+
+```yaml
+- uses: jordanallenlewis/sealmark/action@v1.0.1
+  id: sealmark
+  with:
+    start: npx -y my-mcp-server
+    badge-id: my-mcp-server
+- run: echo "$BADGE_TEXT"   # through env, never ${{ }} inside run:
+  env:
+    BADGE_TEXT: ${{ steps.sealmark.outputs.badge-text }}
+```
+
+The `badge` and `badge-id` inputs are newer than the `v1.0.1` tag the examples pin: until a tag that includes them exists, pin a commit SHA of `main` to use them.
 
 ## Permissions
 
