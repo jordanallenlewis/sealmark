@@ -398,7 +398,7 @@ function badgeCommand(values: Record<string, unknown>): CommandOutput {
   const link = values.link as string | undefined;
   const variant = values.variant as string | undefined;
   if (id !== undefined && svg !== undefined) throw new UsageError("badge takes --id (a sealmark.dev badge) or --svg (your own self-reported badge), not both");
-  if (id === undefined && svg === undefined) throw new UsageError("badge needs --id <id> for the sealmark.dev badge of a graded server, or --svg <path> for a self-reported badge you committed");
+  if (id === undefined && svg === undefined) throw new UsageError("badge needs --id <id> for the sealmark.dev badge of a server the public fleet grades, or --svg <path> for a self-reported badge you committed");
   if (link !== undefined && id !== undefined) throw new UsageError("--link applies to badge --svg; a sealmark.dev badge always links to the server's results page");
   if (variant !== undefined && !(BADGE_VARIANTS as readonly string[]).includes(variant)) throw new UsageError(`--variant: unknown variant "${variant}" (use ${BADGE_VARIANTS.join(", ")})`);
   if (variant !== undefined && svg !== undefined) throw new UsageError("--variant applies to badge --id; a self-reported badge is the SVG you committed");

@@ -97,7 +97,7 @@ outputs:
     description: 'Absolute path of the self-reported shields.io endpoint document; empty when it was not written.'
     value: ${{ steps.run.outputs.shields }}
   badge-text:
-    description: 'What the self-reported badge says, for example sealmark 1.0: core A · fs B · self-reported; empty when it was not written.'
+    description: 'What the self-reported badge says, for example sealmark 0.3-draft: core A · fs B · self-reported (the label carries the methodology of the pinned CLI); empty when this run wrote none.'
     value: ${{ steps.run.outputs.badge-text }}
   badge-markdown:
     description: 'With badge-id: the Markdown snippet for the sealmark.dev badge. Empty otherwise.'

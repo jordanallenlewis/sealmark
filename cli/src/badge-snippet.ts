@@ -5,8 +5,9 @@
  * Two sources, never mixed:
  * - `--id <id>`: the badge sealmark.dev serves for a server its public fleet grades (https://sealmark.dev/results/<id>/). The
  *   strings are the same ones the site's own copy buttons give (sealmark-site web/lib/badge.mjs, badgeSnippets), so a maintainer
- *   gets one snippet whichever way they ask. The image exists only while the site has a badge for that id; this command cannot
- *   tell, because it does not fetch anything.
+ *   gets one snippet whichever way they ask. The site draws a badge only for a server whose latest fleet run is badge-eligible
+ *   (a graded server can still have none: core only, provisional, an inconclusive critical check); any other id is a 404. This
+ *   command cannot tell, because it does not fetch anything, so its text says to check the results page.
  * - `--svg <path or https URL>`: a self-reported badge the maintainer committed (the file `run --format badge` writes). Its alt
  *   text says self-reported, because nothing vouches for a file anyone can edit.
  *
@@ -58,6 +59,9 @@ export function checkRef(flag: "svg" | "link", ref: string): string {
   const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(v)?.[1]?.toLowerCase();
   if (scheme && scheme !== "https") throw new Error(`--${flag}: only a relative path, a /path from the repository root or an https:// URL works in a README`);
   if (flag === "link" && !scheme) throw new Error("--link takes an https:// URL");
+  // HTML would read "&copy;" in an attribute as a character reference, and reStructuredText reads a target ending in "_" as a reference name.
+  if (/&[A-Za-z0-9#]+;/.test(v)) throw new Error(`--${flag}: "${clip(v)}" contains an HTML character reference (&name;); percent-encode the & as %26`);
+  if (v.endsWith("_")) throw new Error(`--${flag}: a value ending in "_" is a reference name in reStructuredText; percent-encode it as %5F`);
   if (v.startsWith("//")) throw new Error(`--${flag}: write the scheme (https://...)`);
   return v;
 }
@@ -103,7 +107,8 @@ export function renderBadgeSnippets(s: BadgeSnippets, variant: BadgeVariant = "b
     s.source === "sealmark.dev"
       ? [
           `# Sealmark badge from sealmark.dev (${variant === "badge" ? "flat badge" : variant === "card" ? "card" : "drawn by shields.io"}), linked to ${s.link}`,
-          "# It shows the grade from Sealmark's public fleet and appears only while that page lists the server as graded.",
+          "# It shows the grade from Sealmark's public fleet. The image exists only while that server's latest fleet run earns a badge",
+          "# (the results page then shows one); for any other server it is a 404, so check the page before you paste.",
         ]
       : [
           `# Self-reported Sealmark badge: ${sn.image}${s.link ? `, linked to ${s.link}` : ""}`,

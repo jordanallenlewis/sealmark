@@ -76,6 +76,11 @@ describe("badge snippets for a self-reported badge (--svg)", () => {
     }
     assert.throws(() => selfReportedSnippets("x.svg", "ci/run"), /--link takes an https:\/\/ URL/);
     assert.throws(() => selfReportedSnippets("x.svg", "http://example.com"), /only a relative path/);
+    assert.throws(() => selfReportedSnippets("x.svg", "https://x.dev/?a=1&copy;b"), /HTML character reference/);
+    assert.throws(() => selfReportedSnippets("x.svg", "https://x.dev/?a=1&#169;b"), /HTML character reference/);
+    assert.equal(selfReportedSnippets("x.svg", "https://x.dev/?a=1&b=2").link, "https://x.dev/?a=1&b=2", "a plain & between parameters is fine");
+    assert.throws(() => selfReportedSnippets("x.svg", "https://x.dev/run_"), /reference name in reStructuredText/);
+    assert.throws(() => selfReportedSnippets("badge_", undefined), /reference name in reStructuredText/);
   });
 });
 
@@ -83,7 +88,8 @@ describe("the text form", () => {
   it("prints the three formats under a header that says where the image comes from", () => {
     const text = renderBadgeSnippets(siteBadgeSnippets("git"));
     assert.match(text, /^# Sealmark badge from sealmark\.dev \(flat badge\), linked to https:\/\/sealmark\.dev\/results\/git\/\n/);
-    assert.match(text, /appears only while that page lists the server as graded/);
+    assert.match(text, /exists only while that server's latest fleet run earns a badge/);
+    assert.match(text, /for any other server it is a 404, so check the page before you paste/);
     assert.ok(text.includes("\nMarkdown:\n[![Sealmark](https://sealmark.dev/badge/git.svg)](https://sealmark.dev/results/git/)\n"));
     assert.ok(text.includes('\nHTML:\n<a href="https://sealmark.dev/results/git/"><img src="https://sealmark.dev/badge/git.svg" alt="Sealmark"></a>\n'));
     assert.ok(text.includes("\nreStructuredText:\n.. image:: https://sealmark.dev/badge/git.svg\n   :target: https://sealmark.dev/results/git/\n   :alt: Sealmark\n"), "rst keeps its indentation so it pastes as is");

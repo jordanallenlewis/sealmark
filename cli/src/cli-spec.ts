@@ -111,7 +111,7 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     name: "badge",
     usage: "badge --id <id> [--variant <badge|card|shields>] [--json] | badge --svg <path|url> [--link <url>] [--json]",
     summary:
-      "Print README snippets (Markdown, HTML, reStructuredText) for the sealmark.dev badge of a server the public fleet grades (--id), or for a self-reported badge SVG you committed (--svg). Prints, never writes, and contacts nothing.",
+      "Print README snippets (Markdown, HTML, reStructuredText) for the sealmark.dev badge of a server the public fleet grades and lists with a badge (--id), or for a self-reported badge SVG you committed (--svg). Prints, never writes, and contacts nothing.",
   },
   {
     name: "config show",

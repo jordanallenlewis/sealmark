@@ -4,7 +4,7 @@
 // its own environment), so the token never appears in a command line or a log. This file never prints a value from process.env.
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const input = (name) => (process.env[`SEALMARK_INPUT_${name}`] ?? "").trim();
@@ -72,8 +72,12 @@ function badgeOn(get = input, extra = splitArgs(get("ARGS"))) {
   const mode = (get("BADGE") || "auto").toLowerCase();
   if (!["auto", "true", "false"].includes(mode)) throw new Error('badge: expected auto, true or false');
   if (mode !== "auto") return mode === "true";
-  const at = extra.indexOf("--server");
-  const named = at >= 0 ? extra[at + 1] : extra.find((a) => a.startsWith("--server="))?.slice("--server=".length);
+  // The CLI keeps the last --server it is given, so the last one decides here too.
+  let named;
+  for (let i = 0; i < extra.length; i++) {
+    if (extra[i] === "--server") named = extra[i + 1] ?? "";
+    else if (extra[i].startsWith("--server=")) named = extra[i].slice("--server=".length);
+  }
   if (named !== undefined) return named !== "" && named !== "all" && !named.includes(",");
   return !get("CONFIG");
 }
@@ -149,7 +153,7 @@ function badgeSummary(text, svg, id, snippets) {
     if (svg) out.push("The SVG and the shields.io document are in the report directory. To show it in a README, commit one from a run on your main branch and reference it (the CLI README, section Badge, has the snippet).", "");
   }
   if (id) {
-    out.push(`Badge from sealmark.dev for \`${id}\` (the public fleet's grade; it appears only while ${SITE}/results/${id}/ lists the server as graded):`, "");
+    out.push(`Badge from sealmark.dev for \`${id}\` (the public fleet's grade). The image exists only while that server's latest fleet run earns a badge, which ${SITE}/results/${id}/ then shows; otherwise it is a 404, so check the page before you paste:`, "");
     out.push("```markdown", snippets.markdown, "```", "", "```html", snippets.html, "```", "", "```rst", snippets.rst, "```", "");
   }
   return `${out.join("\n")}`;
@@ -166,10 +170,12 @@ function main() {
   const reportDir = resolve(input("REPORT_DIR") || "sealmark-report");
   let argv;
   let cmd;
+  let badge;
   try {
     argv = buildArgv();
     badgeId();
-    argv.push("--format", badgeOn() ? "summary,json,junit,sarif,badge,shields" : "summary,json,junit,sarif", "--out-dir", reportDir);
+    badge = badgeOn();
+    argv.push("--format", badge ? "summary,json,junit,sarif,badge,shields" : "summary,json,junit,sarif", "--out-dir", reportDir);
     cmd = command(argv);
   } catch (e) {
     exitWith(2, `sealmark action: ${e.message}`);
@@ -180,14 +186,18 @@ function main() {
   // Sealmark reads every SEALMARK_* variable as a setting and refuses one it does not know, so the action's own
   // variables stay out of its environment. Any other SEALMARK_* setting the workflow sets still reaches it.
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SEALMARK_INPUT_") && k !== "SEALMARK_ACTION_BIN"));
+  // Badge files left by an earlier run (a committed report directory, a reused self-hosted workspace) must never pass for this
+  // run's badge: they are removed first, and only read back when this run asked for them.
+  if (badge) for (const ext of ["badge.svg", "shields.json"]) rmSync(join(reportDir, `sealmark-report.${ext}`), { force: true });
   const child = spawn(cmd.cmd, cmd.args, { stdio: "inherit", cwd: process.cwd(), env });
   child.on("error", (e) => exitWith(4, `sealmark action: could not start ${cmd.cmd}: ${e.code ?? e.message}`));
-  child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir));
+  child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir, badge));
 }
 
-function finish(code, reportDir) {
+function finish(code, reportDir, badge) {
   const file = (ext) => join(reportDir, `sealmark-report.${ext}`);
   const path = (ext) => (existsSync(file(ext)) ? file(ext) : "");
+  const badgePath = (ext) => (badge ? path(ext) : "");
   let summary = "";
   if (existsSync(file("json"))) {
     try {
@@ -201,7 +211,7 @@ function finish(code, reportDir) {
 
   // The badge text comes from the CLI's shields document, which it builds from harness constants only (methodology, pack ids, letters).
   let badgeText = "";
-  if (existsSync(file("shields.json"))) {
+  if (badgePath("shields.json")) {
     try {
       const doc = JSON.parse(readFileSync(file("shields.json"), "utf8"));
       if (typeof doc?.label === "string" && typeof doc?.message === "string") badgeText = `${doc.label}: ${doc.message}`.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
@@ -219,8 +229,8 @@ function finish(code, reportDir) {
     sarif: path("sarif"),
     junit: path("junit.xml"),
     summary,
-    "badge": path("badge.svg"),
-    "shields": path("shields.json"),
+    "badge": badgePath("badge.svg"),
+    "shields": badgePath("shields.json"),
     "badge-text": badgeText,
     "badge-markdown": snippets.markdown,
     "badge-html": snippets.html,
@@ -232,8 +242,8 @@ function finish(code, reportDir) {
     // `--format summary` next to other formats goes to the console, so the file is usually absent; the one-line grade stands in.
     const text = existsSync(file("summary.txt")) ? readFileSync(file("summary.txt"), "utf8").trimEnd() : summary;
     if (text) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Sealmark\n\n\`\`\`text\n${text}\n\`\`\`\n`);
-    const badge = badgeSummary(badgeText, path("badge.svg"), id, snippets);
-    if (badge) appendFileSync(process.env.GITHUB_STEP_SUMMARY, badge);
+    const section = badgeSummary(badgeText, badgePath("badge.svg"), id, snippets);
+    if (section) appendFileSync(process.env.GITHUB_STEP_SUMMARY, section);
   }
   process.exit(code);
 }

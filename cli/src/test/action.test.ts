@@ -197,7 +197,7 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
     assert.equal(r.outputs["badge-text"], "");
     assert.ok(r.summary.includes(`\`\`\`markdown\n${want.markdown}\n\`\`\``));
     assert.ok(r.summary.includes(`\`\`\`rst\n${want.rst}\n\`\`\``));
-    assert.match(r.summary, /appears only while https:\/\/sealmark\.dev\/results\/filesystem\/ lists the server as graded/);
+    assert.match(r.summary, /exists only while that server's latest fleet run earns a badge, which https:\/\/sealmark\.dev\/results\/filesystem\/ then shows; otherwise it is a 404/);
     assert.doesNotMatch(r.summary, /Self-reported badge/);
     assert.ok(!r.stdout.includes("--start"), "the command line is not echoed");
   });
@@ -329,6 +329,8 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
     assert.equal(formatsOf("b-server", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server api" }), withBadge, "--server <name> picks one");
     assert.equal(formatsOf("b-server-eq", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server=api" }), withBadge);
     assert.equal(formatsOf("b-server-all", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server all" }), without, "--server all is several");
+    assert.equal(formatsOf("b-server-last", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server api --server all" }), without, "the CLI keeps the last --server");
+    assert.equal(formatsOf("b-server-last2", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server=all --server api" }), withBadge);
     assert.equal(formatsOf("b-false", { ...url, SEALMARK_INPUT_BADGE: "false" }), without);
     assert.equal(formatsOf("b-true", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_BADGE: "TRUE" }), withBadge, "true always asks; the CLI decides");
     for (const [name, env, msg] of [
@@ -365,6 +367,31 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
     assert.equal(broken.code, 0);
     assert.equal(broken.outputs["badge-text"], "");
     assert.ok(broken.outputs.shields, "the file path is still reported");
+  });
+
+  it("badge files left from an earlier run never pass for this run's badge", () => {
+    const old = JSON.stringify({ schemaVersion: 1, label: "sealmark 1.0", message: "core A · fs A · self-reported", color: "brightgreen" });
+    const seed = (name: string) => {
+      const rep = join(dir, name, "sealmark-report");
+      mkdirSync(rep, { recursive: true });
+      writeFileSync(join(rep, "sealmark-report.shields.json"), old);
+      writeFileSync(join(rep, "sealmark-report.badge.svg"), "<svg>old</svg>");
+      return rep;
+    };
+    // badge on, and the CLI stops (exit 2) before it writes anything: the old files are gone and no output names them.
+    const repOn = seed("stale-on");
+    const on = act("stale-on", { SEALMARK_INPUT_URL: "http://127.0.0.1:1/mcp", SEALMARK_FAKE_EXIT: "2" }, fakeBin("stale-on").bin);
+    assert.equal(on.code, 2);
+    for (const key of ["badge", "shields", "badge-text"]) assert.equal(on.outputs[key], "", key);
+    assert.ok(!existsSync(join(repOn, "sealmark-report.shields.json")) && !existsSync(join(repOn, "sealmark-report.badge.svg")), "the old files were removed before the run");
+    assert.doesNotMatch(on.summary, /Badge/);
+    // badge off: the files are left alone (this run did not ask for them) and no output reads them.
+    const repOff = seed("stale-off");
+    const off = act("stale-off", { SEALMARK_INPUT_URL: "http://127.0.0.1:1/mcp", SEALMARK_INPUT_BADGE: "false" }, fakeBin("stale-off").bin);
+    assert.equal(off.code, 0, off.stderr);
+    for (const key of ["badge", "shields", "badge-text"]) assert.equal(off.outputs[key], "", key);
+    assert.ok(existsSync(join(repOff, "sealmark-report.shields.json")), "badge: false never deletes a file");
+    assert.doesNotMatch(off.summary, /Badge/);
   });
 
   it("an unclosed quote in args exits 2", () => {

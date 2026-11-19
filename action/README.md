@@ -71,7 +71,7 @@ The action always adds `--format summary,json,junit,sarif --out-dir <report-dir>
 | `summary` | One line of graded packs, for example `core A · db B`. Several servers read `a: core A | b: core B`; a server that did not start reads `failed`. |
 | `badge` | Absolute path of the self-reported badge SVG; empty when it was not written. |
 | `shields` | Absolute path of the self-reported shields.io endpoint document; empty when it was not written. |
-| `badge-text` | What the self-reported badge says, for example `sealmark 1.0: core A · fs B · self-reported`, or `sealmark 1.0: no badge: core only`; empty when it was not written. |
+| `badge-text` | What this run's self-reported badge says, for example `sealmark 0.3-draft: core A · fs B · self-reported` or `sealmark 0.3-draft: no badge: core only` (the label carries the methodology of the pinned CLI); empty when this run wrote none. |
 | `badge-markdown` | With `badge-id`: the Markdown snippet for the sealmark.dev badge. Empty otherwise. |
 | `badge-html` | With `badge-id`: the HTML snippet. Empty otherwise. |
 | `badge-rst` | With `badge-id`: the reStructuredText snippet (three lines). Empty otherwise. |
@@ -82,8 +82,8 @@ The one-line summary is also appended to the job summary page under `## Sealmark
 
 Two different badges, never mixed:
 
-- **Self-reported** (`badge`): the run's own badge, the same SVG and shields.io document as `sealmark run --format badge,shields`. Its message ends in `self-reported`, and a run that is not badge-eligible gets a grey `no badge: <reason>`. It lands in the report directory and the artifact; to show it in a README, commit one from a run on your main branch (the CLI README, "Badge", has the snippet). `badge-text` says what it reads.
-- **sealmark.dev** (`badge-id`): the badge the public fleet's grade earns at `https://sealmark.dev/results/<id>/`. The snippets are the ones that page's copy buttons give (and `sealmark badge --id <id>` prints from the next CLI release); the image appears only while that page lists the server as graded. The action builds the text and fetches nothing.
+- **Self-reported** (`badge`): the run's own badge, the same SVG and shields.io document as `sealmark run --format badge,shields`. Its message ends in `self-reported`, and a run that is not badge-eligible gets a grey `no badge: <reason>`. It lands in the report directory and the artifact; to show it in a README, commit one from a run on your main branch (the CLI README, "Badge", has the snippet). `badge-text` says what it reads. Old badge files in the report directory are removed before the run, so the outputs always describe this run.
+- **sealmark.dev** (`badge-id`): the badge the public fleet's grade earns at `https://sealmark.dev/results/<id>/`. The snippets are the ones that page's copy buttons give (and `sealmark badge --id <id>` prints from the next CLI release). The image exists only while that server's latest fleet run earns a badge (the results page then shows one); for any other server, a graded one with a core-only or provisional result included, it is a 404. The action builds the text and fetches nothing, so check the page first.
 
 ```yaml
 - uses: jordanallenlewis/sealmark/action@v1.0.1
@@ -95,6 +95,8 @@ Two different badges, never mixed:
   env:
     BADGE_TEXT: ${{ steps.sealmark.outputs.badge-text }}
 ```
+
+The `badge` and `badge-id` inputs are newer than the `v1.0.1` tag the examples pin: until a tag that includes them exists, pin a commit SHA of `main` to use them.
 
 ## Permissions
 
