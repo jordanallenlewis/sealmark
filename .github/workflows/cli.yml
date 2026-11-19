@@ -1,4 +1,5 @@
-# Sealmark CLI tests. Runs typecheck and the full test suite on every pull request and push to main that touches cli/,
+# Sealmark CLI tests. Runs typecheck and the full test suite on every pull request and push to main that touches cli/ or action/
+# (cli/src/test/action.test.ts checks action/action.yml),
 # on both supported Node majors: 22 (the stated minimum, engines >=22.13) and 24 (where the sqlite tests also run).
 # Linux only. macOS and Windows are covered by the owner's own machine, so this adds no extra runner minutes.
 # It tests only; it deploys and publishes nothing (publish.yml does that).
@@ -8,11 +9,13 @@ on:
   pull_request:
     paths:
       - "cli/**"
+      - "action/**"
       - ".github/workflows/cli.yml"
   push:
     branches: [main]
     paths:
       - "cli/**"
+      - "action/**"
       - ".github/workflows/cli.yml"
 
 permissions:
