@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { failureRewriter, makeSecretScrubber } from "../report/redact.js";
-import { TraceRecorder } from "../trace.js";
+import { CallIndex, MAX_LINKED_CALLS, TraceRecorder } from "../trace.js";
 import type { RunResult } from "../types.js";
 import { FAST, cliKit, srv } from "./helpers.js";
 
@@ -79,6 +79,14 @@ describe("trace: recorder", () => {
     assert.ok(Buffer.byteLength(lines.slice(0, -1).join("\n")) <= 400);
   });
 
+  it("returns the line number of a kept message, and nothing for a dropped one", () => {
+    const t = new TraceRecorder(200);
+    assert.equal(t.record({ session: 0, dir: "send", message: { jsonrpc: "2.0", id: 1, method: "ping" } }), 1);
+    let last: number | undefined = 1;
+    for (let i = 0; i < 10; i++) last = t.record({ session: 0, dir: "recv", message: { jsonrpc: "2.0", id: i, result: { text: "x".repeat(50) } } });
+    assert.equal(last, undefined);
+  });
+
   it("never throws on a message it cannot serialise", () => {
     const t = new TraceRecorder();
     const loop: Record<string, unknown> = { jsonrpc: "2.0", id: 1 };
@@ -86,6 +94,74 @@ describe("trace: recorder", () => {
     assert.doesNotThrow(() => t.record({ session: 0, dir: "recv", message: loop }));
     assert.doesNotThrow(() => t.record({ session: 0, dir: "recv", message: { id: 2n } }));
     assert.doesNotThrow(() => t.text());
+  });
+});
+
+describe("trace: call index", () => {
+  const send = (session: number, id: number, name: string, args: unknown) => ({ session, dir: "send" as const, message: { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } } });
+  const recv = (session: number, id: number) => ({ session, dir: "recv" as const, message: { jsonrpc: "2.0", id, result: { content: [] } } });
+
+  it("finds the request with this tool and these arguments, and its reply, in the sessions asked for", () => {
+    const ix = new CallIndex();
+    ix.observe(send(0, 5, "read", { path: "a", n: 1 }), 10);
+    ix.observe(recv(0, 5), 11);
+    ix.observe(send(1, 5, "read", { path: "a", n: 1 }), 12);
+    ix.observe(recv(1, 5), 13);
+    // key order does not matter
+    assert.deepEqual(ix.find([0], "read", { n: 1, path: "a" }), { calls: [{ session: 0, request: 10, response: 11 }] });
+    assert.deepEqual(ix.find([0, 1], "read", { path: "a", n: 1 }), { calls: [{ session: 0, request: 10, response: 11 }, { session: 1, request: 12, response: 13 }] });
+    assert.equal(ix.find([2], "read", { path: "a", n: 1 }), undefined);
+    assert.equal(ix.find([0], "read", { path: "b", n: 1 }), undefined);
+    assert.equal(ix.find([0], "write", { path: "a", n: 1 }), undefined);
+  });
+
+  it("links no line the trace did not keep, and no reply that is a server request", () => {
+    const ix = new CallIndex();
+    ix.observe(send(0, 1, "t", {}), undefined);
+    ix.observe(recv(0, 1), 3);
+    assert.equal(ix.find([0], "t", {}), undefined);
+    ix.observe(send(0, 2, "t", { a: 1 }), 4);
+    ix.observe({ session: 0, dir: "recv", message: { jsonrpc: "2.0", id: 2, method: "sampling/createMessage", params: {} } }, 5);
+    ix.observe(recv(0, 2), undefined);
+    assert.deepEqual(ix.find([0], "t", { a: 1 }), { calls: [{ session: 0, request: 4 }] });
+  });
+
+  it("ignores everything that is not a tools/call request, and a reply in another session", () => {
+    const ix = new CallIndex();
+    ix.observe({ session: 0, dir: "send", message: { jsonrpc: "2.0", id: 1, method: "tools/list" } }, 1);
+    ix.observe({ session: 0, dir: "send", message: { jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 9 } } }, 2);
+    ix.observe({ session: 0, dir: "send", message: null }, 3);
+    ix.observe(send(0, 7, "t", { a: 1 }), 4);
+    ix.observe(recv(1, 7), 5);
+    assert.deepEqual(ix.find([0], "t", { a: 1 }), { calls: [{ session: 0, request: 4 }] });
+    assert.equal(ix.find([0], "t", undefined), undefined);
+  });
+
+  it("gives a request the harness cancelled no reply, even when one comes late", () => {
+    const ix = new CallIndex();
+    ix.observe(send(0, 4, "slow", {}), 1);
+    ix.observe({ session: 0, dir: "send", message: { jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 4, reason: "timeout" } } }, 2);
+    ix.observe(recv(0, 4), 3);
+    assert.deepEqual(ix.find([0], "slow", {}), { calls: [{ session: 0, request: 1 }] });
+  });
+
+  it("matches a reply whose id is the request's number written as a string, as the SDK does", () => {
+    const ix = new CallIndex();
+    ix.observe(send(0, 3, "t", {}), 1);
+    ix.observe({ session: 0, dir: "recv", message: { jsonrpc: "2.0", id: "3", result: {} } }, 2);
+    assert.deepEqual(ix.find([0], "t", {}), { calls: [{ session: 0, request: 1, response: 2 }] });
+    ix.observe(send(0, 8, "u", {}), 3);
+    ix.observe({ session: 0, dir: "recv", message: { jsonrpc: "2.0", id: "x8", result: {} } }, 4);
+    assert.deepEqual(ix.find([0], "u", {}), { calls: [{ session: 0, request: 3 }] });
+  });
+
+  it("keeps at most MAX_LINKED_CALLS links and counts the rest", () => {
+    const ix = new CallIndex();
+    for (let i = 0; i < MAX_LINKED_CALLS + 3; i++) ix.observe(send(0, i, "t", {}), i + 1);
+    const r = ix.find([0], "t", {});
+    assert.equal(r?.calls.length, MAX_LINKED_CALLS);
+    assert.equal(r?.more, 3);
+    assert.deepEqual(r?.calls.map((c) => c.request), Array.from({ length: MAX_LINKED_CALLS }, (_, i) => i + 1));
   });
 });
 
@@ -177,6 +253,92 @@ describe("cli: run --trace", { timeout: 300_000 }, () => {
     const plain = sealmark(["run", "--config", cfg, ...TWO, "--format", "json"]);
     assert.equal(plain.code, 0, plain.err);
     assert.ok((JSON.parse(plain.out) as RunResult).checks.every((c) => c.trace === undefined), "a check names trace sessions without --trace");
+  });
+
+  /** Every evidence link must point to a tools/call request with that tool and those arguments, in a session of the check, and to its reply. Returns the linked packs. */
+  const checkLinks = (r: RunResult, traceText: string): { packs: Set<string>; linked: number } => {
+    const bySeq = new Map(parse(traceText).map((l) => [l.seq, l]));
+    const canon = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+    const packs = new Set<string>();
+    let linked = 0;
+    for (const c of r.checks) {
+      for (const e of c.evidence) {
+        if (!e.trace) continue;
+        assert.notEqual(c.id, "refusal-quality", "refusal-quality evidence is linked");
+        assert.ok(e.tool && e.args !== undefined, `${c.id}: a link on evidence with no tool call`);
+        assert.ok(e.trace.calls.length > 0);
+        for (const call of e.trace.calls) {
+          assert.ok(c.trace?.sessions.includes(call.session), `${c.id}: linked session ${call.session} is not one of the check's sessions`);
+          const req = bySeq.get(call.request);
+          assert.ok(req, `${c.id}: line ${call.request} is not in the trace`);
+          assert.equal(req.session, call.session);
+          assert.equal(req.dir, "send");
+          assert.equal(req.message.method, "tools/call");
+          const params = req.message.params as { name: string; arguments?: unknown };
+          assert.equal(params.name, e.tool);
+          assert.equal(canon(params.arguments ?? {}), canon(e.args));
+          if (call.response !== undefined) {
+            const res = bySeq.get(call.response);
+            assert.ok(res && res.dir === "recv" && res.session === call.session && res.message.id === req.message.id && res.seq > req.seq, `${c.id}: line ${call.response} is not the reply to ${call.request}`);
+          }
+        }
+        linked++;
+        packs.add(c.pack);
+      }
+    }
+    return { packs, linked };
+  };
+
+  it("links a call's evidence to the request with that tool and those arguments, and its reply, in the check's own sessions", () => {
+    // net opens sessions of its own, so a link has to stay inside the check's test area.
+    const NET = fileURLToPath(new URL("../toy/net.js", import.meta.url));
+    const sandboxes = join(dir, "sandboxes5");
+    mkdirSync(sandboxes, { recursive: true });
+    const cfg = writeYaml("trace5.yaml", `name: calls\nversion: 1.0.0\nserver:\n  command: ${JSON.stringify(process.execPath)}\n  args: ${JSON.stringify([NET, "--mode", "good"])}\nsandbox:\n  dir: ${JSON.stringify(sandboxes)}\n`);
+    const tracePath = join(dir, "calls.trace.jsonl");
+    const TWO = ["--pack", "core", "--pack", "net", "--timeout-probe", "2", "--fail-under", "none"];
+    const traced = sealmark(["run", "--config", cfg, ...TWO, "--format", "json", "--trace", tracePath]);
+    assert.equal(traced.code, 0, traced.err);
+    const { packs, linked } = checkLinks(JSON.parse(traced.out) as RunResult, readFileSync(tracePath, "utf8"));
+    assert.ok(linked > 3, `only ${linked} evidence lines linked`);
+    assert.ok(packs.has("net"), `links only in ${[...packs].join(", ")}`);
+
+    const plain = sealmark(["run", "--config", cfg, ...TWO, "--format", "json"]);
+    assert.equal(plain.code, 0, plain.err);
+    const p = JSON.parse(plain.out) as RunResult;
+    assert.ok(p.checks.every((c) => c.evidence.every((e) => e.trace === undefined)), "evidence is linked without --trace");
+    const verdicts = (x: RunResult) => ({ packs: Object.fromEntries(Object.entries(x.packs).map(([k, v]) => [k, `${v?.status}:${v?.grade?.letter ?? "-"}`])), checks: x.checks.map((c) => `${c.id}:${c.verdict}`) });
+    assert.deepEqual(verdicts(JSON.parse(traced.out) as RunResult), verdicts(p));
+  });
+
+  it("fs: links evidence whose arguments are what was sent, and not evidence shown with sandbox placeholders", () => {
+    const FS = fileURLToPath(new URL("../toy/fs.js", import.meta.url));
+    const sandboxes = join(dir, "sandboxes7");
+    mkdirSync(sandboxes, { recursive: true });
+    const cfg = writeYaml("trace7.yaml", `name: fs-calls\nversion: 1.0.0\nserver:\n  command: ${JSON.stringify(process.execPath)}\n  args: ${JSON.stringify([FS, "--mode", "traverse", "--root", "{sandbox}"])}\nsandbox:\n  dir: ${JSON.stringify(sandboxes)}\n`);
+    const tracePath = join(dir, "fs.trace.jsonl");
+    const traced = sealmark(["run", "--config", cfg, "--pack", "fs", "--timeout-probe", "2", "--fail-under", "none", "--format", "json", "--trace", tracePath]);
+    assert.ok(traced.code === 0 || traced.code === 1 || traced.code === 3, traced.err);
+    const r = JSON.parse(traced.out) as RunResult;
+    const { packs } = checkLinks(r, readFileSync(tracePath, "utf8"));
+    assert.ok(packs.has("fs"), "no fs evidence linked");
+    const shown = r.checks.filter((c) => c.pack === "fs").flatMap((c) => c.evidence).filter((e) => e.tool && JSON.stringify(e.args ?? null).includes("{sandbox}"));
+    assert.ok(shown.length > 0, "the fs toy run has no placeholder evidence to check");
+    assert.ok(shown.every((e) => e.trace === undefined), "evidence shown with {sandbox} is linked");
+  });
+
+  it("links a failed core check's evidence to the call that failed it", () => {
+    // robust-r5 typeerror: a schema-invalid call ends in an unhandled runtime error, recorded with its tool and arguments.
+    const TOY = fileURLToPath(new URL("../toy/robust-r5.js", import.meta.url));
+    const cfg = writeYaml("trace6.yaml", `name: core-calls\nversion: 1.0.0\nserver:\n  command: ${JSON.stringify(process.execPath)}\n  args: ${JSON.stringify([TOY, "--mode", "typeerror"])}\n`);
+    const tracePath = join(dir, "core.trace.jsonl");
+    const traced = sealmark(["run", "--config", cfg, "--pack", "core", "--timeout-probe", "6", "--fail-under", "none", "--format", "json", "--trace", tracePath]);
+    assert.ok(traced.code === 0 || traced.code === 1, traced.err);
+    const r = JSON.parse(traced.out) as RunResult;
+    assert.notEqual(r.checks.find((c) => c.id === "robust-input")?.verdict, "pass");
+    const { packs } = checkLinks(r, readFileSync(tracePath, "utf8"));
+    assert.ok(packs.has("core"), "no core evidence linked");
+    assert.ok(r.checks.find((c) => c.id === "robust-input")!.evidence.some((e) => e.trace && e.code === "robust.internal-error"), "the failing call is not linked");
   });
 
   it("without --trace no trace file is written", () => {

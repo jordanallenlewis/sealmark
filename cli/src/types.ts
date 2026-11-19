@@ -195,6 +195,11 @@ export interface Evidence {
   excerpt?: string;
   /** A stable machine-readable code for the observation, for example `fs.canary-read`. */
   code?: string;
+  /**
+   * `run --trace` only: the tools/call requests in the check's own sessions with this evidence's tool and arguments (trace line numbers,
+   * with the reply's line when the trace kept it). A match on content, not proof of which identical request the evidence came from.
+   */
+  trace?: { calls: { session: number; request: number; response?: number }[]; more?: number };
 }
 
 /** Which tools a check exercised with a valid call, and which it could not (addendum 1.1). */

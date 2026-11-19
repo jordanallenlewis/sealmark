@@ -32,7 +32,7 @@ import { ROLES, ROLE_PASSWORD, SEED_DB, SEED_VERSION, deprovision, parseDsn, pro
 import { ensureSqliteFixture } from "./sqlite-fixtures.js";
 import { stageFiles } from "./staged-files.js";
 import { captureSurface } from "./surface.js";
-import type { WireEvent } from "./trace.js";
+import { CallIndex, type WireEvent } from "./trace.js";
 import { CANDIDATE_PACKS, type AuthServerStub, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
 
 export interface RunOptions {
@@ -57,7 +57,8 @@ export interface RunOptions {
   timeoutProbeSec: number;
   log: (s: string) => void;
   /** `run --trace`: every JSON-RPC message of every server session this run opens. Changes nothing the run decides. */
-  onWire?: (e: WireEvent) => void;
+  /** Returns the trace line the message got (undefined when the trace dropped it), so evidence can point to its requests. */
+  onWire?: (e: WireEvent) => number | undefined | void;
 }
 
 /** The harness itself failed (server would not start, database unavailable). The CLI exits 4. */
@@ -724,6 +725,12 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     let sessionsOpened = 0;
     /** `run --trace`: which test area opened each session (by index), so every check can name the sessions behind its verdict. */
     const sessionOwner = new Map<number, PackId>();
+    /** `run --trace`: the tools/call requests the trace kept, so evidence that names a call can point to its lines. */
+    const callIndex = opts.onWire ? new CallIndex() : undefined;
+    const wire = (e: WireEvent): void => {
+      const seq = opts.onWire!(e);
+      callIndex?.observe(e, typeof seq === "number" ? seq : undefined);
+    };
     const open = async (ctx: TemplateCtx, extra: OpenOptions = {}, owner?: PackId): Promise<McpSession> => {
       // After a signal nothing starts again: a server spawned now would be in no list the cleanup sweeps, and would hold the sandbox open.
       if (finished) throw new SessionError("the run was interrupted, so the server was not started again");
@@ -732,7 +739,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
       if (opts.onWire && owner) sessionOwner.set(index, owner);
       const s = await McpSession.open(spec, ctx, {
         clientVersion,
-        ...(opts.onWire ? { onMessage: (dir: "send" | "recv", message: unknown) => opts.onWire!({ session: index, dir, message }) } : {}),
+        ...(opts.onWire ? { onMessage: (dir: "send" | "recv", message: unknown) => wire({ session: index, dir, message }) } : {}),
         connectTimeoutMs: eff.timeouts.connect_ms,
         onProgress: log,
         ...(logObs && transport === "stdio" ? { onStderr: (chunk: string) => logObs.push(chunk, "stderr") } : {}),
@@ -1117,7 +1124,13 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
       for (let i = 0; i < checks.length; i++) {
         const c = checks[i]!;
         const sessions = byPack.get(c.pack);
-        if (c.id !== "refusal-quality" && sessions?.length) checks[i] = { ...c, trace: { sessions: [...sessions].sort((a, b) => a - b) } };
+        if (c.id === "refusal-quality" || !sessions?.length) continue;
+        // Each call's evidence points to the requests with its tool and arguments in these sessions (sealmark#27, slice 3).
+        const evidence = c.evidence.map((e) => {
+          const link = e.tool !== undefined && e.args !== undefined ? callIndex?.find(sessions, e.tool, e.args) : undefined;
+          return link ? { ...e, trace: link } : e;
+        });
+        checks[i] = { ...c, evidence, trace: { sessions: [...sessions].sort((a, b) => a - b) } };
       }
     }
 
