@@ -54,6 +54,13 @@ inputs:
     description: 'true keeps the report directory as a workflow artifact named sealmark-report.'
     required: false
     default: 'true'
+  badge:
+    description: 'auto, true or false. auto writes the self-reported badge (sealmark-report.badge.svg) and shields.io document (sealmark-report.shields.json) when the run grades one server: start or url without config, or a --server <name> in args. true always asks for them (the CLI exits 2 for several servers).'
+    required: false
+    default: 'auto'
+  badge-id:
+    description: 'A sealmark.dev server id (https://sealmark.dev/results/<id>/). Fills the badge-markdown, badge-html and badge-rst outputs and the step summary with that badge. Nothing is fetched.'
+    required: false
   node-version:
     description: 'Node version for actions/setup-node (Sealmark needs 22.13 or newer).'
     required: false
@@ -83,6 +90,25 @@ outputs:
     description: 'One line with each graded pack and its letter, for example core A · db B.'
     value: ${{ steps.run.outputs.summary }}
 
+  badge:
+    description: 'Absolute path of the self-reported badge SVG; empty when it was not written.'
+    value: ${{ steps.run.outputs.badge }}
+  shields:
+    description: 'Absolute path of the self-reported shields.io endpoint document; empty when it was not written.'
+    value: ${{ steps.run.outputs.shields }}
+  badge-text:
+    description: 'What the self-reported badge says, for example sealmark 1.0: core A · fs B · self-reported; empty when it was not written.'
+    value: ${{ steps.run.outputs.badge-text }}
+  badge-markdown:
+    description: 'With badge-id: the Markdown snippet for the sealmark.dev badge. Empty otherwise.'
+    value: ${{ steps.run.outputs.badge-markdown }}
+  badge-html:
+    description: 'With badge-id: the HTML snippet for the sealmark.dev badge. Empty otherwise.'
+    value: ${{ steps.run.outputs.badge-html }}
+  badge-rst:
+    description: 'With badge-id: the reStructuredText snippet (three lines) for the sealmark.dev badge. Empty otherwise.'
+    value: ${{ steps.run.outputs.badge-rst }}
+
 runs:
   using: composite
   steps:
@@ -110,6 +136,8 @@ runs:
         SEALMARK_INPUT_REPORT_DIR: ${{ inputs.report-dir }}
         SEALMARK_INPUT_UPLOAD_SARIF: ${{ inputs.upload-sarif }}
         SEALMARK_INPUT_ARTIFACT: ${{ inputs.artifact }}
+        SEALMARK_INPUT_BADGE: ${{ inputs.badge }}
+        SEALMARK_INPUT_BADGE_ID: ${{ inputs.badge-id }}
         SEALMARK_INPUT_NODE_VERSION: ${{ inputs.node-version }}
         SEALMARK_INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: node "${{ github.action_path }}/run.mjs"

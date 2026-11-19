@@ -108,6 +108,12 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     ],
   },
   {
+    name: "badge",
+    usage: "badge --id <id> [--variant <badge|card|shields>] [--json] | badge --svg <path|url> [--link <url>] [--json]",
+    summary:
+      "Print README snippets (Markdown, HTML, reStructuredText) for the sealmark.dev badge of a server the public fleet grades (--id), or for a self-reported badge SVG you committed (--svg). Prints, never writes, and contacts nothing.",
+  },
+  {
     name: "config show",
     usage: 'config show [--origins] [--json] [--config <path>] [--profile <name>] [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--soft-fail] [--format <fmt>]...',
     summary: "Print the merged configuration, with the origin of every value on request.",
@@ -159,7 +165,7 @@ const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
   { name: "version", type: "boolean", short: "v", description: "Print the sealmark version and exit.", commands: [] },
   { name: "force", type: "boolean", description: "Overwrite files that already exist.", commands: ["init", "config migrate"] },
-  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init"] },
+  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge"] },
   { name: "probes", type: "boolean", description: "init: start the server like doctor does and write one valid call per tool as a probes: block (stdout, or the config file with --write). Never prompts.", commands: ["init"] },
   { name: "write", type: "boolean", description: "init --probes: append the block to the config file; exit 2 when it already has a probes: key.", commands: ["init"] },
   { name: "from", type: "string", metavar: "<command line>", description: 'Write a config from a one-liner, for example --from "npx -y @modelcontextprotocol/server-filesystem {sandbox}".', commands: ["init"] },
@@ -168,6 +174,10 @@ const META: CliFlag[] = [
   { name: "client", type: "list", metavar: "<name>", description: "Only read this MCP client's configuration (claude-desktop, claude-code, cursor, vscode, copilot-cli).", commands: ["init"] },
   { name: "effective", type: "boolean", description: "Accepted for compatibility; config show always prints the effective configuration.", commands: ["config show"] },
   { name: "origins", type: "boolean", description: "Annotate every value with where it came from.", commands: ["config show"] },
+  { name: "id", type: "string", metavar: "<id>", description: "badge: the sealmark.dev server id, the last part of https://sealmark.dev/results/<id>/.", commands: ["badge"] },
+  { name: "svg", type: "string", metavar: "<path|url>", description: "badge: where your committed self-reported badge SVG is, as a README would reference it (a relative path or an https URL).", commands: ["badge"] },
+  { name: "link", type: "string", metavar: "<url>", description: "badge --svg: an https URL the badge links to (for example your report or CI run).", commands: ["badge"] },
+  { name: "variant", type: "string", metavar: "<badge|card|shields>", description: "badge --id: the flat badge (default), the larger card, or the same badge drawn by shields.io.", commands: ["badge"] },
   { name: "replay", type: "string", metavar: "<report.json>", description: "Re-run with the locked settings of a previous JSON report, after verifying its config hash.", commands: ["run"] },
   { name: "fixture", type: "string", metavar: "<fs|git|sqlite>", description: "Write a fixture the sandbox generates, for hand runs: the fs layout, the git repositories or the SQLite database (DuckDB is planned).", commands: ["run"] },
   { name: "into", type: "string", metavar: "<dir>", description: "Directory for --fixture.", commands: ["run"] },

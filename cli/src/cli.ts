@@ -25,6 +25,7 @@ import { inCi } from "./config/index.js";
 import { failureRewriter, makeSecretScrubber, runRewriter } from "./report/redact.js";
 import { inertLines } from "./report/sanitize.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
+import { BADGE_VARIANTS, renderBadgeSnippets, selfReportedSnippets, siteBadgeSnippets, type BadgeVariant } from "./badge-snippet.js";
 import { FORMATS, FORMAT_EXT, isFailed, renderReport, startFailureLine, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
 import { compareBaseline, parseBaseline, type BaselineDiff } from "./report/baseline.js";
 import { decideExit } from "./report/exit.js";
@@ -390,6 +391,27 @@ async function runCommand(values: Values): Promise<CommandOutput> {
 // dispatch
 // ---------------------------------------------------------------------------------------------------------
 
+/** `sealmark badge`: README snippets for a sealmark.dev badge (--id) or a committed self-reported SVG (--svg). Pure text, no network. */
+function badgeCommand(values: Record<string, unknown>): CommandOutput {
+  const id = values.id as string | undefined;
+  const svg = values.svg as string | undefined;
+  const link = values.link as string | undefined;
+  const variant = values.variant as string | undefined;
+  if (id !== undefined && svg !== undefined) throw new UsageError("badge takes --id (a sealmark.dev badge) or --svg (your own self-reported badge), not both");
+  if (id === undefined && svg === undefined) throw new UsageError("badge needs --id <id> for the sealmark.dev badge of a graded server, or --svg <path> for a self-reported badge you committed");
+  if (link !== undefined && id !== undefined) throw new UsageError("--link applies to badge --svg; a sealmark.dev badge always links to the server's results page");
+  if (variant !== undefined && !(BADGE_VARIANTS as readonly string[]).includes(variant)) throw new UsageError(`--variant: unknown variant "${variant}" (use ${BADGE_VARIANTS.join(", ")})`);
+  if (variant !== undefined && svg !== undefined) throw new UsageError("--variant applies to badge --id; a self-reported badge is the SVG you committed");
+  let snippets;
+  try {
+    snippets = id !== undefined ? siteBadgeSnippets(id) : selfReportedSnippets(svg!, link);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  if (values.json) return { code: 0, stdout: `${JSON.stringify(snippets, null, 2)}\n` };
+  return { code: 0, stdout: renderBadgeSnippets(snippets, (variant ?? "badge") as BadgeVariant) };
+}
+
 let pingCommand: string | undefined;
 
 async function main(argv: string[]): Promise<CommandOutput> {
@@ -478,6 +500,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return explainCommand(rest[0], Boolean(values.json));
       case "diff":
         return diffCommand(rest[0], rest[1], { json: Boolean(values.json) });
+      case "badge":
+        return badgeCommand(values);
       case "list-checks":
         return listChecksCommand({ pack: [...((values.pack as string[] | undefined) ?? []), ...((values.suite as string[] | undefined) ?? [])], json: Boolean(values.json) });
       case "config show": {

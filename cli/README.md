@@ -63,6 +63,7 @@ npx sealmark run
 | `sealmark diff <before.json> <after.json> [--json]` | compare two JSON reports of the same server without running anything: regressions, improvements and tool-surface drift. Exit 1 on a regression or a breaking or notable drift, 2 for an unreadable file (see [Drift](#tool-surface-drift)) |
 | `sealmark list-checks [--pack id] [--json]` | every check with its pack, severity, scope, and whether its settings are locked by the standard profile |
 | `sealmark explain <check-id>` | what a check measures, its probes, thresholds, known false positives and negatives, and the settings that affect it |
+| `sealmark badge --id <id> [--variant badge\|card\|shields] [--json]` | print README snippets (Markdown, HTML, reStructuredText) for the sealmark.dev badge of a server the public fleet grades. `badge --svg <path\|url> [--link <url>]` prints them for a self-reported badge you committed instead. Prints, never writes, fetches nothing (see [Badge](#badge)) |
 | `sealmark describe --json` | the machine-readable description of this build (checks, config keys, commands, flags, exit codes) |
 | `sealmark config show [--origins] [--json]` | the merged configuration. The first line says whether a run with it would be `# STANDARD` or `# CUSTOM` and, for CUSTOM, which settings differ from the standard profile. `--origins` says where every value came from; `--json` adds an `integrity` object (`standard`, `hash`, `diff`) |
 | `sealmark config profiles [--json]` | shipped and user profiles with their difference from `standard` |
@@ -343,7 +344,7 @@ The JUnit and SARIF shapes are checked by the test suite against their required 
 
 ## Badge
 
-`--format badge` writes a flat SVG, `--format shields` a [shields.io endpoint](https://shields.io/endpoint) document. Both are rendered locally from one run and are **self-reported**: Sealmark does not host a badge or vouch for one, and anyone can edit a file they commit.
+`--format badge` writes a flat SVG, `--format shields` a [shields.io endpoint](https://shields.io/endpoint) document. Both are rendered locally from one run and are **self-reported**: nothing hosts or vouches for this badge, and anyone can edit a file they commit. (The badge sealmark.dev shows for a server its public fleet grades is a different one; see [Snippets](#snippets-sealmark-badge).)
 
 - **Label** `sealmark 1.0`: the methodology version is always on the badge.
 - **Message** when the run is badge-eligible: one letter per graded pack, in pack order, then `self-reported`, for example `core A · db B · fs A · self-reported` (a run with a provisional grade is not eligible, see below). There is no overall letter; the weakest pack stays visible. The colour follows the worst letter (A bright green, B green, C yellow, D orange, F red).
@@ -363,6 +364,22 @@ Commit the SVG and reference it from your README, or commit the JSON and let shi
 ```
 
 Commit a fresh badge from CI on your main branch rather than by hand, so it tracks the code.
+
+### Snippets: `sealmark badge`
+
+`sealmark badge` prints the Markdown, HTML and reStructuredText to paste into a README. It reads no report, fetches nothing and writes nothing; it only builds the text.
+
+```bash
+npx sealmark badge --svg badge/sealmark-report.badge.svg                 # your committed self-reported badge
+npx sealmark badge --svg badge/sealmark-report.badge.svg --link https://github.com/<owner>/<repo>/actions
+npx sealmark badge --id <id>                                              # the sealmark.dev badge of a server the public fleet grades
+npx sealmark badge --id <id> --variant card                               # the larger card; shields: the same badge drawn by shields.io
+```
+
+- `--svg` takes the path as your README would reference it (a relative path, a `/path` from the repository root, or an `https://` URL). The alt text is `Sealmark (self-reported)`. A path with a space, quote, bracket or backslash is refused (exit 2) rather than escaped, because the three formats escape differently.
+- `--id` takes the last part of `https://sealmark.dev/results/<id>/`. That badge is not self-reported: it shows the grade from Sealmark's public fleet, links to the results page, and the image appears only while that page lists the server as graded (the command cannot tell; it does not fetch). The strings are the same as the copy buttons on the results page.
+- `--json` prints `{schema: "sealmark.badge-snippets/1", source, link, variants: {badge, card, shields}}` with `image`, `markdown`, `html` and `rst` for each (a self-reported badge has `badge` only).
+- The GitHub Action writes the self-reported badge for one-server runs and prints these snippets with `badge-id` (`action/README.md`, "Badge").
 
 ## Multiple servers and baselines
 

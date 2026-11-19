@@ -3,6 +3,7 @@
 // Secrets: bearer-env is the NAME of a variable. Only the literal "${NAME}" goes into argv (Sealmark expands it from
 // its own environment), so the token never appears in a command line or a log. This file never prints a value from process.env.
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -62,6 +63,42 @@ function buildArgv(get = input) {
   return argv;
 }
 
+/**
+ * badge input: "auto" (default) adds the self-reported badge formats only when the run is sure to grade one server: start or
+ * url without a config, or a --server <name> other than "all" in args. The CLI refuses badge and shields for several servers
+ * (exit 2 before any run), so a config that may hold several servers is left alone unless badge is "true".
+ */
+function badgeOn(get = input, extra = splitArgs(get("ARGS"))) {
+  const mode = (get("BADGE") || "auto").toLowerCase();
+  if (!["auto", "true", "false"].includes(mode)) throw new Error('badge: expected auto, true or false');
+  if (mode !== "auto") return mode === "true";
+  const at = extra.indexOf("--server");
+  const named = at >= 0 ? extra[at + 1] : extra.find((a) => a.startsWith("--server="))?.slice("--server=".length);
+  if (named !== undefined) return named !== "" && named !== "all" && !named.includes(",");
+  return !get("CONFIG");
+}
+
+const SITE = "https://sealmark.dev";
+/** sealmark.dev server ids: lower-case letters, digits and inner hyphens (the same rule as `sealmark badge --id`). */
+const SITE_ID = /^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/;
+
+/** README snippets for the sealmark.dev flat badge of one server: the same strings as `sealmark badge --id` and the site's copy buttons. */
+function siteSnippets(id) {
+  const page = `${SITE}/results/${id}/`;
+  const image = `${SITE}/badge/${id}.svg`;
+  return {
+    markdown: `[![Sealmark](${image})](${page})`,
+    html: `<a href="${page}"><img src="${image}" alt="Sealmark"></a>`,
+    rst: `.. image:: ${image}\n   :target: ${page}\n   :alt: Sealmark`,
+  };
+}
+
+function badgeId(get = input) {
+  const id = get("BADGE_ID");
+  if (id && !SITE_ID.test(id)) throw new Error("badge-id takes a sealmark.dev server id: lower-case letters, digits and hyphens, the last part of https://sealmark.dev/results/<id>/");
+  return id;
+}
+
 /** `core A · db B` for one run, `failed` for a run that did not start. */
 function runSummary(run) {
   if (run.status === "failed" && !run.packs) return "failed";
@@ -94,6 +131,30 @@ function command(argv) {
   return existsSync(npxCli) ? { cmd: process.execPath, args: [npxCli, ...args] } : { cmd: "npx.cmd", args };
 }
 
+/** One GITHUB_OUTPUT entry: name=value, or the name<<DELIMITER form for a value with line breaks (the rst snippet). */
+function outputLine(name, value) {
+  if (!/[\r\n]/.test(value)) return `${name}=${value}\n`;
+  let delimiter;
+  do delimiter = `sealmark_${randomBytes(12).toString("hex")}`;
+  while (value.includes(delimiter));
+  return `${name}<<${delimiter}\n${value}\n${delimiter}\n`;
+}
+
+/** The step summary's badge section: what this run's self-reported badge says, and the sealmark.dev snippets when badge-id is set. */
+function badgeSummary(text, svg, id, snippets) {
+  if (!text && !id) return "";
+  const out = ["", "### Badge", ""];
+  if (text) {
+    out.push(`Self-reported badge of this run: \`${text.replace(/`/g, "'")}\``, "");
+    if (svg) out.push("The SVG and the shields.io document are in the report directory. To show it in a README, commit one from a run on your main branch and reference it (the CLI README, section Badge, has the snippet).", "");
+  }
+  if (id) {
+    out.push(`Badge from sealmark.dev for \`${id}\` (the public fleet's grade; it appears only while ${SITE}/results/${id}/ lists the server as graded):`, "");
+    out.push("```markdown", snippets.markdown, "```", "", "```html", snippets.html, "```", "", "```rst", snippets.rst, "```", "");
+  }
+  return `${out.join("\n")}`;
+}
+
 function exitWith(code, message) {
   if (message) console.error(message);
   process.exit(code);
@@ -107,7 +168,8 @@ function main() {
   let cmd;
   try {
     argv = buildArgv();
-    argv.push("--format", "summary,json,junit,sarif", "--out-dir", reportDir);
+    badgeId();
+    argv.push("--format", badgeOn() ? "summary,json,junit,sarif,badge,shields" : "summary,json,junit,sarif", "--out-dir", reportDir);
     cmd = command(argv);
   } catch (e) {
     exitWith(2, `sealmark action: ${e.message}`);
@@ -137,13 +199,41 @@ function finish(code, reportDir) {
   // Outputs are single `name=value` lines: the summary can carry a server name, so control characters are dropped.
   summary = summary.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
 
-  const outputs = { "exit-code": String(code), "report-dir": reportDir, json: path("json"), sarif: path("sarif"), junit: path("junit.xml"), summary };
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([k, v]) => `${k}=${v}\n`).join(""));
+  // The badge text comes from the CLI's shields document, which it builds from harness constants only (methodology, pack ids, letters).
+  let badgeText = "";
+  if (existsSync(file("shields.json"))) {
+    try {
+      const doc = JSON.parse(readFileSync(file("shields.json"), "utf8"));
+      if (typeof doc?.label === "string" && typeof doc?.message === "string") badgeText = `${doc.label}: ${doc.message}`.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").trim();
+    } catch {
+      // An unreadable badge document leaves badge-text empty; it never changes the exit code.
+    }
+  }
+  const id = input("BADGE_ID");
+  const snippets = id ? siteSnippets(id) : { markdown: "", html: "", rst: "" };
+
+  const outputs = {
+    "exit-code": String(code),
+    "report-dir": reportDir,
+    json: path("json"),
+    sarif: path("sarif"),
+    junit: path("junit.xml"),
+    summary,
+    "badge": path("badge.svg"),
+    "shields": path("shields.json"),
+    "badge-text": badgeText,
+    "badge-markdown": snippets.markdown,
+    "badge-html": snippets.html,
+    "badge-rst": snippets.rst,
+  };
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([k, v]) => outputLine(k, v)).join(""));
 
   if (process.env.GITHUB_STEP_SUMMARY) {
     // `--format summary` next to other formats goes to the console, so the file is usually absent; the one-line grade stands in.
     const text = existsSync(file("summary.txt")) ? readFileSync(file("summary.txt"), "utf8").trimEnd() : summary;
     if (text) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Sealmark\n\n\`\`\`text\n${text}\n\`\`\`\n`);
+    const badge = badgeSummary(badgeText, path("badge.svg"), id, snippets);
+    if (badge) appendFileSync(process.env.GITHUB_STEP_SUMMARY, badge);
   }
   process.exit(code);
 }

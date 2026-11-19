@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { siteBadgeSnippets } from "../badge-snippet.js";
 import { CLI_FLAGS } from "../cli-spec.js";
 import { CLI, TOY, hermeticEnv } from "./helpers.js";
 
@@ -33,10 +34,10 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
   it("is composite and names the action", () => {
     assert.equal(action.runs.using, "composite");
     assert.ok(inputNames.length >= 17, "every input of the design is present");
-    for (const name of ["version", "start", "url", "config", "pack", "fail-under", "soft-fail", "baseline", "write-baseline", "fail-on", "bearer-env", "args", "report-dir", "upload-sarif", "artifact", "node-version", "working-directory"]) {
+    for (const name of ["version", "start", "url", "config", "pack", "fail-under", "soft-fail", "baseline", "write-baseline", "fail-on", "bearer-env", "args", "report-dir", "upload-sarif", "artifact", "badge", "badge-id", "node-version", "working-directory"]) {
       assert.ok(inputNames.includes(name), `input ${name}`);
     }
-    for (const name of ["exit-code", "report-dir", "json", "sarif", "junit", "summary"]) assert.ok(outputNames.includes(name), `output ${name}`);
+    for (const name of ["exit-code", "report-dir", "json", "sarif", "junit", "summary", "badge", "shields", "badge-text", "badge-markdown", "badge-html", "badge-rst"]) assert.ok(outputNames.includes(name), `output ${name}`);
   });
 
   it("every input is optional and has the documented default", () => {
@@ -47,6 +48,8 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
     assert.equal(action.inputs.artifact.default, "true");
     assert.equal(action.inputs["node-version"].default, "24");
     assert.equal(action.inputs["working-directory"].default, ".");
+    assert.equal(action.inputs.badge.default, "auto");
+    assert.equal(action.inputs["badge-id"].default, undefined);
   });
 
   it("the version input defaults to the version in cli/package.json", () => {
@@ -149,7 +152,19 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
       env: hermeticEnv({ SEALMARK_ACTION_BIN: bin, GITHUB_OUTPUT: outFile, GITHUB_STEP_SUMMARY: sumFile, ...env }),
     });
     const outputs: Record<string, string> = {};
-    if (existsSync(outFile)) for (const line of text(outFile).split("\n")) if (line.includes("=")) outputs[line.slice(0, line.indexOf("="))] = line.slice(line.indexOf("=") + 1);
+    if (existsSync(outFile)) {
+      // name=value lines, and GitHub's name<<DELIMITER ... DELIMITER form for a value with line breaks.
+      const lines = text(outFile).split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const heredoc = /^([a-z-]+)<<(\S+)$/.exec(lines[i]);
+        if (heredoc) {
+          const end = lines.indexOf(heredoc[2], i + 1);
+          assert.ok(end > i, `output ${heredoc[1]} has no closing delimiter`);
+          outputs[heredoc[1]] = lines.slice(i + 1, end).join("\n");
+          i = end;
+        } else if (lines[i].includes("=")) outputs[lines[i].slice(0, lines[i].indexOf("="))] = lines[i].slice(lines[i].indexOf("=") + 1);
+      }
+    }
     return { code: r.status, stdout: r.stdout, stderr: r.stderr, outputs, summary: existsSync(sumFile) ? text(sumFile) : "", work };
   }
   const toy = (mode: string) => ({ SEALMARK_INPUT_START: `${process.execPath} ${TOY} --mode ${mode}`, SEALMARK_INPUT_PACK: "core" });
@@ -161,7 +176,29 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
     assert.equal(r.outputs["report-dir"], join(r.work, "rep"));
     for (const key of ["json", "sarif", "junit"]) assert.ok(r.outputs[key] && existsSync(r.outputs[key]), `${key} path exists: ${r.outputs[key]}`);
     assert.match(r.outputs.summary, /^core [A-F]$/);
-    assert.match(r.summary, /^## Sealmark\n\n```text\n[\s\S]*core[\s\S]*\n```\n$/);
+    assert.match(r.summary, /^## Sealmark\n\n```text\n[\s\S]*core[\s\S]*\n```\n/);
+    // One server from start: badge auto writes the self-reported badge; --timeout-probe 2 makes the run CUSTOM, which earns no badge.
+    for (const key of ["badge", "shields"]) assert.ok(r.outputs[key] && existsSync(r.outputs[key]), `${key} path exists: ${r.outputs[key]}`);
+    assert.equal(r.outputs.badge, join(r.work, "rep", "sealmark-report.badge.svg"));
+    assert.match(r.outputs["badge-text"], /^sealmark \S+: no badge: custom run$/);
+    assert.ok(text(r.outputs.badge).startsWith("<svg "), "the badge output is the CLI's own SVG");
+    assert.match(r.summary, /\n### Badge\n\nSelf-reported badge of this run: `sealmark \S+: no badge: custom run`\n/);
+    for (const key of ["badge-markdown", "badge-html", "badge-rst"]) assert.equal(r.outputs[key], "", `${key} is empty without badge-id`);
+  });
+
+  it("badge-id: the outputs and the job summary carry the same sealmark.dev snippets as sealmark badge --id", () => {
+    const r = act("badgeid", { ...toy("nosql"), SEALMARK_INPUT_FAIL_UNDER: "none", SEALMARK_INPUT_BADGE: "false", SEALMARK_INPUT_BADGE_ID: "filesystem", SEALMARK_INPUT_ARGS: "--timeout-probe 2" });
+    assert.equal(r.code, 0, r.stderr);
+    const want = siteBadgeSnippets("filesystem").variants.badge!;
+    assert.equal(r.outputs["badge-markdown"], want.markdown);
+    assert.equal(r.outputs["badge-html"], want.html);
+    assert.equal(r.outputs["badge-rst"], want.rst, "the three-line rst survives the multi-line output form");
+    assert.equal(r.outputs.badge, "", "badge: false writes no self-reported badge");
+    assert.equal(r.outputs["badge-text"], "");
+    assert.ok(r.summary.includes(`\`\`\`markdown\n${want.markdown}\n\`\`\``));
+    assert.ok(r.summary.includes(`\`\`\`rst\n${want.rst}\n\`\`\``));
+    assert.match(r.summary, /appears only while https:\/\/sealmark\.dev\/results\/filesystem\/ lists the server as graded/);
+    assert.doesNotMatch(r.summary, /Self-reported badge/);
     assert.ok(!r.stdout.includes("--start"), "the command line is not echoed");
   });
 
@@ -272,6 +309,62 @@ describe("run.mjs runs a real Sealmark and reports like the CLI", () => {
       "--format", "summary,json,junit,sarif",
       "--out-dir", join(r.work, "out", "reports"),
     ]);
+  });
+
+  it("badge auto adds the badge formats only for a run sure to grade one server; true and false decide; anything else exits 2", () => {
+    const formatsOf = (name: string, env: Record<string, string>): string => {
+      const fake = fakeBin(name);
+      const r = act(name, env, fake.bin);
+      assert.equal(r.code, 0, r.stderr);
+      const argv = JSON.parse(text(fake.argvFile)) as string[];
+      return argv[argv.indexOf("--format") + 1];
+    };
+    const url = { SEALMARK_INPUT_URL: "http://127.0.0.1:1/mcp" };
+    const withBadge = "summary,json,junit,sarif,badge,shields";
+    const without = "summary,json,junit,sarif";
+    assert.equal(formatsOf("b-url", url), withBadge, "url alone is one server");
+    assert.equal(formatsOf("b-start", { SEALMARK_INPUT_START: "node s.js" }), withBadge, "start alone is one server");
+    assert.equal(formatsOf("b-config", { SEALMARK_INPUT_CONFIG: "sealmark.yaml" }), without, "a config may hold several servers");
+    assert.equal(formatsOf("b-config-url", { ...url, SEALMARK_INPUT_CONFIG: "sealmark.yaml" }), without);
+    assert.equal(formatsOf("b-server", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server api" }), withBadge, "--server <name> picks one");
+    assert.equal(formatsOf("b-server-eq", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server=api" }), withBadge);
+    assert.equal(formatsOf("b-server-all", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_ARGS: "--server all" }), without, "--server all is several");
+    assert.equal(formatsOf("b-false", { ...url, SEALMARK_INPUT_BADGE: "false" }), without);
+    assert.equal(formatsOf("b-true", { SEALMARK_INPUT_CONFIG: "sealmark.yaml", SEALMARK_INPUT_BADGE: "TRUE" }), withBadge, "true always asks; the CLI decides");
+    for (const [name, env, msg] of [
+      ["b-bad", { ...url, SEALMARK_INPUT_BADGE: "yes" }, /badge: expected auto, true or false/],
+      ["b-badid", { ...url, SEALMARK_INPUT_BADGE_ID: "https://sealmark.dev/results/x/" }, /badge-id takes a sealmark\.dev server id/],
+      ["b-badid2", { ...url, SEALMARK_INPUT_BADGE_ID: "My_Server" }, /badge-id takes a sealmark\.dev server id/],
+    ] as const) {
+      const fake = fakeBin(name);
+      const r = act(name, env, fake.bin);
+      assert.equal(r.code, 2, name);
+      assert.match(r.stderr, msg);
+      assert.ok(!existsSync(fake.argvFile), `${name}: Sealmark was not started`);
+    }
+  });
+
+  it("badge-text reads the CLI's shields document and drops control characters; a broken one leaves it empty", () => {
+    const bin = join(dir, "btext-shields.mjs");
+    writeFileSync(
+      bin,
+      [
+        `import { mkdirSync, writeFileSync } from "node:fs";`,
+        `import { join } from "node:path";`,
+        `const argv = process.argv.slice(2);`,
+        `const dir = argv[argv.indexOf("--out-dir") + 1];`,
+        `mkdirSync(dir, { recursive: true });`,
+        `writeFileSync(join(dir, "sealmark-report.shields.json"), process.env.SEALMARK_FAKE_SHIELDS);`,
+      ].join("\n"),
+    );
+    const url = { SEALMARK_INPUT_URL: "http://127.0.0.1:1/mcp" };
+    const ok = act("btext-ok", { ...url, SEALMARK_FAKE_SHIELDS: JSON.stringify({ schemaVersion: 1, label: "sealmark 1.0", message: "core A · fs B\nINJECTED=1 · self-reported", color: "green" }) }, bin);
+    assert.equal(ok.outputs["badge-text"], "sealmark 1.0: core A · fs B INJECTED=1 · self-reported");
+    assert.ok(!("INJECTED" in ok.outputs), "a line break in the text cannot start a new output");
+    const broken = act("btext-broken", { ...url, SEALMARK_FAKE_SHIELDS: "{not json" }, bin);
+    assert.equal(broken.code, 0);
+    assert.equal(broken.outputs["badge-text"], "");
+    assert.ok(broken.outputs.shields, "the file path is still reported");
   });
 
   it("an unclosed quote in args exits 2", () => {
