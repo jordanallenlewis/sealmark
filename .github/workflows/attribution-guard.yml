@@ -27,7 +27,7 @@ jobs:
           #!/usr/bin/env bash
           # attribution-guard (Jordan 2026-11-19): fail a PR that credits an AI/agent or carries someone else's identity.
           # Inputs (env): BASE HEAD (shas), TITLE, BODY, PR_AUTHOR, HEAD_REF. Run inside a full checkout.
-          set -u
+          set -u +e
           JORDAN_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com)$'
           COMMITTER_OK_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com|noreply@github\.com)$'
           TRAILER='^[[:space:]]*(Agent|Requested-by|Co-authored-by|Claude-Session|Generated-by)[[:space:]]*:'
