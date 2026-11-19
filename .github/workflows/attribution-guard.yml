@@ -1,0 +1,66 @@
+name: attribution-guard
+# Jordan's hard rule (2026-11-19): no project of his credits Claude or any other AI, and his own PRs carry only his identity.
+# No secrets. Fails a PR whose title, body or commits carry AI/agent credit or an agent identity.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  attribution-guard:
+    name: attribution-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check title, body and commits
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          #!/usr/bin/env bash
+          # attribution-guard (Jordan 2026-11-19): fail a PR that credits an AI/agent or carries someone else's identity.
+          # Inputs (env): BASE HEAD (shas), TITLE, BODY, PR_AUTHOR, HEAD_REF. Run inside a full checkout.
+          set -u +e
+          JORDAN_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com)$'
+          COMMITTER_OK_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com|noreply@github\.com)$'
+          TRAILER='^[[:space:]]*(Agent|Requested-by|Co-authored-by|Claude-Session|Generated-by)[[:space:]]*:'
+          OTHER='generated with[^a-z]{0,6}claude|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
+          IDENT='(@agent\.local|^hq-[a-z0-9_.-]*@|^trinity-agent@|\[bot\]@|noreply@anthropic\.com)'
+          fail=0
+          bad() { echo "::error::attribution-guard: $1"; fail=1; }
+
+          scan() { # $1 label, stdin text
+            t=$(cat)
+            printf '%s\n' "$t" | grep -Eiq "$TRAILER" && bad "$1 has an Agent:/Requested-by:/Co-authored-by:/Claude-Session:/Generated-by: line"
+            printf '%s\n' "$t" | grep -Eiq "$OTHER" && bad "$1 credits an AI (Generated with Claude, claude.ai/code link, noreply@anthropic.com)"
+          }
+
+          scan "PR title" <<< "${TITLE:-}"
+          scan "PR body" <<< "${BODY:-}"
+
+          # dependabot PRs are exempt as PRs (hq-automerge squashes them as Jordan); every other PR is judged per commit
+          dep=0
+          case "${PR_AUTHOR:-}" in dependabot*|renovate*) dep=1 ;; esac
+          case "${HEAD_REF:-}" in dependabot/*|renovate/*) dep=1 ;; esac
+
+          for c in $(git rev-list "${BASE}..${HEAD}"); do
+            s=$(git log -1 --format=%h "$c")
+            scan "commit $s message" < <(git log -1 --format=%B "$c")
+            ae=$(git log -1 --format=%ae "$c"); ce=$(git log -1 --format=%ce "$c")
+            echo "$ae" | grep -Eiq "$IDENT" && [ "$dep" = 0 ] && bad "commit $s author is an agent/bot identity ($ae)"
+            echo "$ce" | grep -Eiq "$IDENT" && [ "$dep" = 0 ] && bad "commit $s committer is an agent/bot identity ($ce)"
+            # Jordan's own PRs: every commit is authored and committed as him
+            if [ "${PR_AUTHOR:-}" = "jordanallenlewis" ] && [ "$dep" = 0 ]; then
+              echo "$ae" | grep -Eq "$JORDAN_RE" || bad "commit $s author is not jordanallenlewis ($ae)"
+              echo "$ce" | grep -Eq "$COMMITTER_OK_RE" || bad "commit $s committer is not jordanallenlewis ($ce)"
+            fi
+          done
+          [ "$fail" = 0 ] && echo "attribution-guard: clean"
+          exit "$fail"
