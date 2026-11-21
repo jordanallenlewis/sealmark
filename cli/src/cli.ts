@@ -33,6 +33,7 @@ import { compareBaseline, parseBaseline, type BaselineDiff } from "./report/base
 import { decideExit } from "./report/exit.js";
 import { driftFails } from "./report/drift.js";
 import { diffCommand } from "./diff.js";
+import { shareCommand } from "./share.js";
 import { secretLiterals } from "./report/secrets.js";
 import { TraceRecorder, type WireEvent } from "./trace.js";
 import { setCallEvidence } from "./packs/core.js";
@@ -527,6 +528,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return badgeCommand(values);
       case "install-check":
         return await installCheckCommand(rest[0], values);
+      case "share":
+        return shareCommand(rest[0], { json: Boolean(values.json) });
       case "list-checks":
         return listChecksCommand({ pack: [...((values.pack as string[] | undefined) ?? []), ...((values.suite as string[] | undefined) ?? [])], json: Boolean(values.json) });
       case "config show": {
