@@ -144,7 +144,7 @@ export function renderText(input: RunResult, o: RenderOptions = {}): string {
       for (const [k, v] of env) out.push(`  ${k}=${v}`);
     } else out.push("env: (none)");
     const sql = r.server.sqlTools.map((t) => `${t.tool}(${t.arg})`).join(", ");
-    out.push(`${r.server.transport} server, ${r.server.tools.length} tool(s): ${r.server.tools.join(", ") || "none"}${sql ? `; SQL tools: ${sql}` : ""}`);
+    out.push(`${r.server.transport}${r.server.httpTransport === "sse" ? " (HTTP+SSE)" : ""} server, ${r.server.tools.length} tool(s): ${r.server.tools.join(", ") || "none"}${sql ? `; SQL tools: ${sql}` : ""}`);
     const pkg = packageLabel(r);
     if (pkg) out.push(`resolved package: ${pkg}`);
     out.push(r.db ? `db: ${r.db.mode} Postgres, seed ${r.db.seed}, roles ${r.db.roles.join(", ")}` : "db: not used");

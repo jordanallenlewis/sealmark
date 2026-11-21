@@ -110,7 +110,7 @@ Three ideas organize the system:
 
 ### 5.2 The MCP session (`cli/src/mcp.ts`)
 
-A thin wrapper over the official MCP SDK client (stdio and Streamable HTTP). It exists to make failure modes explicit, because a conformance tool must tell "the server misbehaved" apart from "the harness gave up":
+A thin wrapper over the official MCP SDK client (stdio, Streamable HTTP, and the older HTTP+SSE transport with `server.transport: sse`; under SSE the `http` and `oauth` packs are skipped, because their raw requests assume a Streamable HTTP endpoint). It exists to make failure modes explicit, because a conformance tool must tell "the server misbehaved" apart from "the harness gave up":
 
 - **Call results carry structure**: `isError`, text, elapsed time, `timedOut` (the harness stopped waiting), `rpcError` (a JSON-RPC level error, which is a reply and not a timeout) and `closed` (the process or connection went away).
 - **Hard limits**: a 64 MiB message cap so one oversized response cannot kill the transport and read as a pass, pagination capped at 50 pages and the whole `tools/list` at 5 000 tools and 32 MiB of serialized pages (past either, a protocol violation that the `protocol` check reports, so a server that floods the listing cannot exhaust the harness's memory), bounded stderr capture.

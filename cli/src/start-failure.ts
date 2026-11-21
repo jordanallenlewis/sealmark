@@ -7,7 +7,10 @@
  */
 import { isConnectTimeout } from "./launch.js";
 
-export type StartFailureKind = "dependency-resolution" | "needs-credentials" | "missing-runtime" | "bad-launch" | "initialize-timeout" | "unknown";
+export type StartFailureKind = "dependency-resolution" | "needs-credentials" | "missing-runtime" | "bad-launch" | "initialize-timeout" | "transport-mismatch" | "unknown";
+
+/** Written by the session (mcp.ts transportMismatch) when an HTTP URL answered in the way the other HTTP transport does; read below. */
+export const TRANSPORT_MISMATCH = "the URL does not speak the HTTP transport Sealmark used";
 
 export interface StartFailure {
   kind: StartFailureKind;
@@ -21,6 +24,7 @@ export const START_FAILURE_ADVICE: Record<StartFailureKind, string> = {
   "missing-runtime": "the launcher or runtime the command needs is missing on this machine, or is the wrong version (node, python, uvx, npx, docker); install it or change the command.",
   "bad-launch": "the server ran but rejected how it was launched (its arguments, entry file, file permissions or a required setting); check the command and its env.",
   "initialize-timeout": "the server did not answer initialize or tools/list in time and said nothing more specific; run the command once by hand to see it start, then raise --connect-timeout (or --start-timeout for --start) if it is only slow.",
+  "transport-mismatch": "the URL answered the way a server on the other MCP HTTP transport does: for a server on the older HTTP+SSE transport, run with --transport sse and --url pointing at its event stream (usually /sse); for a Streamable HTTP server, leave --transport out and use its MCP endpoint (often /mcp).",
   unknown: "the cause is not one Sealmark recognizes; read the first error in the server's stderr (saved next to the report).",
 };
 
@@ -50,6 +54,8 @@ const RULES: ReadonlyArray<readonly [StartFailureKind, RegExp]> = [
   // The process ran and refused its arguments, its entry file or a setting.
   ["bad-launch", /(?:^|\n)usage: |unrecognized arguments?\b|\bunknown (?:option|argument|command|flag)\b|\binvalid (?:option|argument)\b|the following arguments are required/i],
   ["bad-launch", /\bPermission denied\b|\bEACCES\b|\bEISDIR\b|\bis a directory\b/i],
+  // The harness's own sentence for an HTTP answer that points at the other transport (a 405 to an MCP POST, a GET that opened no event stream).
+  ["transport-mismatch", new RegExp(TRANSPORT_MISMATCH)],
   ["bad-launch", /environment variable\b[^\n]{0,60}?\b(?:required|not set|missing|must be set)\b|\b[A-Z][A-Z0-9]{0,40}_[A-Z0-9_]{1,60} (?:is required|must be set|is not set)\b/],
 ];
 

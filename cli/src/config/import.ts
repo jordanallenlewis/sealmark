@@ -506,6 +506,7 @@ function convert(raw: Raw, cand: { client: SourceClient; path: string }, scope: 
       }
     }
     spec.url = main;
+    if (transport === "sse") spec.transport = "sse";
     if (secret) {
       local.url = t.local;
       routed.push("url");
@@ -537,7 +538,7 @@ function convert(raw: Raw, cand: { client: SourceClient; path: string }, scope: 
     }
   }
 
-  if (transport === "sse") warnings.push("legacy SSE transport: sealmark connects with Streamable HTTP, so this server may not answer; the http pack applies only partially");
+  if (transport === "sse") warnings.push("legacy SSE transport: imported with transport: sse; the http and oauth packs grade a Streamable HTTP endpoint, so they do not run for it");
   for (const [k, msg] of Object.entries(IGNORED_WITH_WARNING)) if (k in b) warnings.push(msg);
   const unanswered = [...inputIds].filter((id) => answers[id] === undefined);
   if (unanswered.length) warnings.push(`input variable(s) ${unanswered.map((i) => `"${i}"`).join(", ")} were not answered; set ${unanswered.map((i) => `SEALMARK_INPUT_${snake(i)}`).join(", ")} in the environment or in sealmark.local.yaml`);
