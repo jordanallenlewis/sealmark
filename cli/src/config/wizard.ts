@@ -364,6 +364,7 @@ const specToYaml = (spec: ImportedServer["spec"]) => ({
   ...(spec.command ? { command: spec.command } : {}),
   ...(spec.command ? { args: spec.args ?? [] } : {}),
   ...(spec.url ? { url: spec.url } : {}),
+  ...(spec.url && spec.transport === "sse" ? { transport: "sse" } : {}),
   ...(spec.env && Object.keys(spec.env).length ? { env: spec.env } : {}),
   ...(spec.headers && Object.keys(spec.headers).length ? { headers: spec.headers } : {}),
 });

@@ -3,7 +3,7 @@
 # Run:  sealmark run     Inspect:  sealmark config show --effective --origins
 # note (github): values moved to sealmark.local.yaml and replaced here by ${...} references: headers.Authorization
 # note (appdb): values moved to sealmark.local.yaml and replaced here by ${...} references: args[2]
-# note (legacy): legacy SSE transport: sealmark connects with Streamable HTTP, so this server may not answer; the http pack applies only partially
+# note (legacy): legacy SSE transport: imported with transport: sse; the http and oauth packs grade a Streamable HTTP endpoint, so they do not run for it
 
 schema_version: 1
 servers:
@@ -30,3 +30,4 @@ servers:
       REGION: ${REGION:-eu}
   legacy:
     url: https://sse.example.test/sse
+    transport: sse

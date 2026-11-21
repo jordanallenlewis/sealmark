@@ -7,7 +7,10 @@
  */
 import { isConnectTimeout } from "./launch.js";
 
-export type StartFailureKind = "dependency-resolution" | "needs-credentials" | "missing-runtime" | "bad-launch" | "initialize-timeout" | "unknown";
+export type StartFailureKind = "dependency-resolution" | "needs-credentials" | "missing-runtime" | "bad-launch" | "initialize-timeout" | "transport-mismatch" | "unknown";
+
+/** Written into the session error (mcp.ts transportMismatch) when an HTTP URL answered the way the other HTTP transport does. The kind comes from the error's typed flag, never from this text, so a server cannot print its way into it. */
+export const TRANSPORT_MISMATCH = "the URL does not speak the HTTP transport Sealmark used";
 
 export interface StartFailure {
   kind: StartFailureKind;
@@ -21,6 +24,7 @@ export const START_FAILURE_ADVICE: Record<StartFailureKind, string> = {
   "missing-runtime": "the launcher or runtime the command needs is missing on this machine, or is the wrong version (node, python, uvx, npx, docker); install it or change the command.",
   "bad-launch": "the server ran but rejected how it was launched (its arguments, entry file, file permissions or a required setting); check the command and its env.",
   "initialize-timeout": "the server did not answer initialize or tools/list in time and said nothing more specific; run the command once by hand to see it start, then raise --connect-timeout (or --start-timeout for --start) if it is only slow.",
+  "transport-mismatch": "the URL answered the way a server on the other MCP HTTP transport does: for a server on the older HTTP+SSE transport, run with --transport sse and --url pointing at its event stream (usually /sse); for a Streamable HTTP server, leave --transport out and use its MCP endpoint (often /mcp).",
   unknown: "the cause is not one Sealmark recognizes; read the first error in the server's stderr (saved next to the report).",
 };
 
@@ -63,7 +67,9 @@ const timedOut = (message: string): boolean => isConnectTimeout(message) || /did
  * The rule whose match ends latest wins (a process says why it died last, after any earlier noise); on a tie, the earlier rule.
  * The message goes after stderr: it is the harness's own last word (and the SDK's message repeats the last stderr lines).
  */
-export function classifyStartFailure(input: { message: string; stderr?: string }): StartFailure {
+export function classifyStartFailure(input: { message: string; stderr?: string; transportMismatch?: boolean }): StartFailure {
+  // The session saw the answer itself (an HTTP status or content type): nothing in a message or stderr outranks that.
+  if (input.transportMismatch) return { kind: "transport-mismatch", advice: START_FAILURE_ADVICE["transport-mismatch"] };
   const stderr = input.stderr ?? "";
   const tail = stderr.length > STDERR_TAIL ? stderr.slice(-STDERR_TAIL) : stderr;
   const text = `${tail}\n${input.message}`
