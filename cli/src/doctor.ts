@@ -484,6 +484,7 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
         args: (spec.args ?? []).map((a) => expand(a, ctx)),
         env: { ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) },
         url: expand(spec.url!, ctx),
+        ...(spec.transport === "sse" ? { transport: "sse" as const } : {}),
         timeoutMs: (spec.start_timeout_sec ?? 60) * 1000,
         // Inside the sandbox, as run starts it: the sandbox root as cwd and, unless sandbox.scrub_env is off, the scrubbed environment.
         ...(sandboxOn ? { cwd: sb.root, ...(cfg.sandbox.scrub_env ? { baseEnv: sb.env({ ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) }) } : {}) } : {}),

@@ -37,6 +37,8 @@ export interface LaunchOptions {
   onOutput?: (chunk: string, stream: "stdout" | "stderr") => void;
   /** The URL the server will answer on. */
   url: string;
+  /** How url is probed while waiting: an MCP POST (Streamable HTTP, the default) or a GET for the event stream (sse). */
+  transport?: "streamable-http" | "sse";
   timeoutMs: number;
   onProgress?: (line: string) => void;
   /** Called right after the process is spawned, before waiting, so the caller can stop it if the run is cancelled meanwhile. */
@@ -198,18 +200,21 @@ type Probe = { state: "ready" | "answered-badly" | "not-yet" | "fatal"; detail: 
 /** Codes that waiting will not fix: the URL itself or the certificate is wrong. */
 const FATAL_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ERR_INVALID_URL", "DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "ERR_SSL_WRONG_VERSION_NUMBER"]);
 
-async function probe(url: string, limitMs = 2_000): Promise<Probe> {
+async function probe(url: string, limitMs = 2_000, transport: "streamable-http" | "sse" = "streamable-http"): Promise<Probe> {
   // "localhost:8000/mcp" parses as a URL whose scheme is "localhost:"; waiting for it would never end.
   if (!/^https?:\/\//i.test(url)) return { state: "fatal", detail: `${url} is not a valid URL: it must start with http:// or https://` };
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      // The Accept header an MCP client sends, so a strict server answers with its own 401/400 instead of 406.
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-      body: "{}",
-      // Never wait past the caller's own limit: --start-timeout 1 must not take 3 s.
-      signal: AbortSignal.timeout(Math.max(1, Math.min(2_000, limitMs))),
-    });
+    // Never wait past the caller's own limit: --start-timeout 1 must not take 3 s.
+    const signal = AbortSignal.timeout(Math.max(1, Math.min(2_000, limitMs)));
+    const r = await fetch(
+      url,
+      transport === "sse"
+        ? // An HTTP+SSE server answers its event-stream URL only to a GET. The body is cancelled at once: the stream it opens is not kept,
+          // so the session the server set up for it ends there.
+          { method: "GET", headers: { accept: "text/event-stream" }, signal }
+        : // The Accept header an MCP client sends, so a strict server answers with its own 401/400 instead of 406.
+          { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream" }, body: "{}", signal },
+    );
     await r.body?.cancel().catch(() => {});
     // 404 means the path is wrong (or another service holds the port); 5xx means the server is not ready yet.
     if (r.status === 404 || r.status >= 500) return { state: "answered-badly", detail: `HTTP ${r.status}` };
@@ -228,7 +233,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export async function launchServer(o: LaunchOptions): Promise<LaunchedServer> {
   installExitHook();
   // Something already answering means a stale server (or the wrong port) would be graded instead of the one we start.
-  const before = await probe(o.url);
+  const before = await probe(o.url, 2_000, o.transport);
   if (before.state === "fatal") throw new LaunchError(`cannot use ${o.url}: ${before.detail}`);
   if (before.state === "ready" || before.state === "answered-badly") {
     throw new LaunchError(`something is already answering at ${o.url} (${before.detail}) before the server was started, so it would be graded instead of yours. Stop it or use another port.`);
@@ -320,7 +325,7 @@ export async function launchServer(o: LaunchOptions): Promise<LaunchedServer> {
   while (Date.now() - started < o.timeoutMs) {
     if (spawnError) return fail(`could not start "${o.command}": ${spawnError.message}`);
     if (exited) return fail(`the server ${handle.exited()} before ${o.url} answered`);
-    const p = await probe(o.url, o.timeoutMs - (Date.now() - started));
+    const p = await probe(o.url, o.timeoutMs - (Date.now() - started), o.transport);
     if (p.state === "fatal") return fail(`cannot use ${o.url}: ${p.detail}`);
     if (p.state === "ready") {
       // A different process could be the one that answered (it won the port); give ours a moment to fail on its own.

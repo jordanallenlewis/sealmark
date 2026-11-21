@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { DEFAULT_INHERITED_ENV_VARS, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ErrorCode, McpError, type JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { expand, type TemplateCtx } from "./config.js";
 import { snapshotTree, snapshotTreeInfo, terminatePids, terminateRemembered, trackRoot, untrackRoot, type ProcInfo } from "./observers/process.js";
 import { createTempCwd } from "./sandbox.js";
+import { TRANSPORT_MISMATCH } from "./start-failure.js";
 import type { ServerSpec, SqlTool } from "./types.js";
 
 export { resolvePackage, type ResolvedPackage } from "./resolve.js";
@@ -266,7 +268,32 @@ function stdoutNoiseOf(e: unknown): string | undefined {
  * Wraps a transport so `tap` sees each message on the wire. Set before connect(): the client chains an onmessage that is already there,
  * so the tap sees every received message first; send() is wrapped in place. The tap never changes a message and never throws into the session.
  */
-function tapMessages(transport: StdioClientTransport | StreamableHTTPClientTransport, tap: (dir: "send" | "recv", message: JSONRPCMessage) => void): void {
+type AnyTransport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
+
+/**
+ * A URL that answers in the other HTTP transport fails with a bare status ("Error POSTing to endpoint", "Non-200 status code (405)"), which
+ * says nothing about the fix. Only answers that point at the other transport are named, so a wrong path (404) or a server error stays as it was:
+ * - Streamable HTTP POST answered 405: the path exists but takes no POST, which is how an HTTP+SSE event-stream URL answers.
+ * - SSE GET answered 400 or 405, or 200 with a content type that is not text/event-stream: how a Streamable HTTP endpoint answers a GET
+ *   without a session (or the URL is not MCP at all).
+ */
+export function transportMismatch(e: unknown, spec: Pick<ServerSpec, "url" | "transport">): string {
+  if (!spec.url) return "";
+  const err = e as { code?: unknown; message?: unknown };
+  const message = typeof err?.message === "string" ? err.message : "";
+  if (spec.transport === "sse") {
+    if (err?.code === 400 || err?.code === 405 || /Invalid content type, expected "?text\/event-stream"?/i.test(message)) {
+      return ` (${TRANSPORT_MISMATCH} (sse): the URL did not open an event stream. If the server speaks Streamable HTTP, drop --transport sse (server.transport) and use its MCP endpoint)`;
+    }
+    return "";
+  }
+  if (err?.code === 405) {
+    return ` (HTTP 405: ${TRANSPORT_MISMATCH} (streamable-http): the URL refused an MCP POST. If the server speaks the older HTTP+SSE transport, run with --transport sse (server.transport: sse) and --url pointing at its event stream, usually /sse)`;
+  }
+  return "";
+}
+
+function tapMessages(transport: AnyTransport, tap: (dir: "send" | "recv", message: JSONRPCMessage) => void): void {
   const safe = (dir: "send" | "recv", message: JSONRPCMessage) => {
     try {
       tap(dir, message);
@@ -316,7 +343,7 @@ export class McpSession {
   private tree: ProcInfo[] = [];
   private tempCwd?: { dir: string; remove(): Promise<void> };
 
-  private constructor(private client: Client, private transport: StdioClientTransport | StreamableHTTPClientTransport) {}
+  private constructor(private client: Client, private transport: AnyTransport) {}
 
   /** Process id of the stdio server (null for HTTP or before it started). */
   get pid(): number | null {
@@ -327,14 +354,17 @@ export class McpSession {
     const timeout = opts.connectTimeoutMs ?? 60_000;
     if (opts.envMode === "scrubbed" && !opts.baseEnv) throw new SessionError('envMode "scrubbed" needs baseEnv (build it with sandbox.env())');
     let tempCwd: McpSession["tempCwd"];
-    let transport: StdioClientTransport | StreamableHTTPClientTransport;
+    let transport: AnyTransport;
     if (spec.url) {
       const headers = Object.fromEntries(
         Object.entries(spec.headers ?? {})
           .filter(([, v]) => !(opts.anonymous && usesBearer(v)))
           .map(([k, v]) => [k, expandHarness(v, ctx)]),
       );
-      transport = new StreamableHTTPClientTransport(new URL(expandHarness(spec.url, ctx)), { requestInit: { headers } });
+      const url = new URL(expandHarness(spec.url, ctx));
+      // The older HTTP+SSE transport: a GET event stream whose first event names the endpoint to POST to. The SDK keeps the POSTs on the
+      // stream's origin and sends the same headers on both.
+      transport = spec.transport === "sse" ? new SSEClientTransport(url, { requestInit: { headers } }) : new StreamableHTTPClientTransport(url, { requestInit: { headers } });
     } else {
       // The SDK's Windows allow-list has PATH but not PATHEXT or COMSPEC, so a launcher that has to find another
       // executable by bare name (uvx -> git) fails inside the harness while working from the user's shell.
@@ -449,7 +479,7 @@ export class McpSession {
       let err: SessionError;
       if (e instanceof SessionError) err = e instanceof ProtocolViolation ? new ProtocolViolation(e.message + suffix) : e;
       else if (isSchemaError(e)) err = new ProtocolViolation(`the server's reply is not valid MCP (${describeSchemaError(e)})${suffix}`);
-      else err = new SessionError(`${(e as Error).message}${suffix}`);
+      else err = new SessionError(`${(e as Error).message}${transportMismatch(e, spec)}${suffix}`);
       err.stderr ??= full;
       err.hint ??= driftHint(full);
       throw err;
