@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { DEFAULT_INHERITED_ENV_VARS, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { SSEClientTransport, SseError } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ErrorCode, McpError, type JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { expand, type TemplateCtx } from "./config.js";
@@ -68,6 +68,8 @@ export function rejectedBeforeRunning(r: Pick<CallResult, "isError" | "text" | "
 export class SessionError extends Error {
   /** Set when the server's stderr looks like dependency drift (see driftHint). */
   hint?: string;
+  /** The URL answered the way a server on the other HTTP transport does (see transportMismatch). A typed field, so no stderr text can set it. */
+  transportMismatch?: boolean;
   /** Bounded copy of the server's stderr at the time of failure (for `<out>.stderr.log`). */
   stderr?: string;
 }
@@ -270,6 +272,12 @@ function stdoutNoiseOf(e: unknown): string | undefined {
  */
 type AnyTransport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
 
+/** Why `run` and `doctor` skip a pack that sends its own Streamable HTTP requests when the server speaks HTTP+SSE: its verdict would describe nothing. */
+export const ssePackSkip = (id: string): string => `the server speaks the older HTTP+SSE transport (server.transport: sse), and the ${id} pack grades a Streamable HTTP endpoint`;
+
+/** What a call says after the SSE event stream dropped: the session lived on that stream, so it is gone (the server forgets it). */
+export const SSE_STREAM_LOST = "the HTTP+SSE event stream closed, and the MCP session it carried ended with it; Sealmark does not reopen it, because a new stream is a new, uninitialized session";
+
 /**
  * A URL that answers in the other HTTP transport fails with a bare status ("Error POSTing to endpoint", "Non-200 status code (405)"), which
  * says nothing about the fix. Only answers that point at the other transport are named, so a wrong path (404) or a server error stays as it was:
@@ -426,7 +434,16 @@ export class McpSession {
       s.closed = true;
       if (s._pid !== null) untrackRoot(s._pid);
     };
+    let connected = false;
     transport.onerror = (e: Error) => {
+      // HTTP+SSE: an error from the event stream after connect means it dropped. The EventSource would reconnect on its own and the
+      // server would hand out a new session that never saw initialize, so later calls would fail for a reason that is not the
+      // server's behaviour. End the session here instead: calls in flight and after it come back closed, with this as the cause.
+      if (connected && transport instanceof SSEClientTransport && e instanceof SseError) {
+        s.transportError ||= `${SSE_STREAM_LOST} (${e.message})`;
+        void transport.close().catch(() => {});
+        return;
+      }
       // A line that is not JSON-RPC is the server's noise, counted for the protocol check; it is not why a later failure happened.
       const noise = transport instanceof StdioClientTransport ? stdoutNoiseOf(e) : undefined;
       if (noise !== undefined) {
@@ -444,6 +461,7 @@ export class McpSession {
     ticker?.unref();
     try {
       await client.connect(transport, { timeout });
+      connected = true;
       s._pid = transport instanceof StdioClientTransport ? transport.pid : null;
       // A launcher (npx, uvx, a shell wrapper) may exit and leave the real server running with nothing linking it to the launcher's
       // pid any more. Remember the tree now, while the links are there, with each command line (the guard against pid reuse).
@@ -479,7 +497,11 @@ export class McpSession {
       let err: SessionError;
       if (e instanceof SessionError) err = e instanceof ProtocolViolation ? new ProtocolViolation(e.message + suffix) : e;
       else if (isSchemaError(e)) err = new ProtocolViolation(`the server's reply is not valid MCP (${describeSchemaError(e)})${suffix}`);
-      else err = new SessionError(`${(e as Error).message}${transportMismatch(e, spec)}${suffix}`);
+      else {
+        const mismatch = transportMismatch(e, spec);
+        err = new SessionError(`${(e as Error).message}${mismatch}${suffix}`);
+        if (mismatch) err.transportMismatch = true;
+      }
       err.stderr ??= full;
       err.hint ??= driftHint(full);
       throw err;

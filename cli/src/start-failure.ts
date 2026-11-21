@@ -9,7 +9,7 @@ import { isConnectTimeout } from "./launch.js";
 
 export type StartFailureKind = "dependency-resolution" | "needs-credentials" | "missing-runtime" | "bad-launch" | "initialize-timeout" | "transport-mismatch" | "unknown";
 
-/** Written by the session (mcp.ts transportMismatch) when an HTTP URL answered in the way the other HTTP transport does; read below. */
+/** Written into the session error (mcp.ts transportMismatch) when an HTTP URL answered the way the other HTTP transport does. The kind comes from the error's typed flag, never from this text, so a server cannot print its way into it. */
 export const TRANSPORT_MISMATCH = "the URL does not speak the HTTP transport Sealmark used";
 
 export interface StartFailure {
@@ -54,8 +54,6 @@ const RULES: ReadonlyArray<readonly [StartFailureKind, RegExp]> = [
   // The process ran and refused its arguments, its entry file or a setting.
   ["bad-launch", /(?:^|\n)usage: |unrecognized arguments?\b|\bunknown (?:option|argument|command|flag)\b|\binvalid (?:option|argument)\b|the following arguments are required/i],
   ["bad-launch", /\bPermission denied\b|\bEACCES\b|\bEISDIR\b|\bis a directory\b/i],
-  // The harness's own sentence for an HTTP answer that points at the other transport (a 405 to an MCP POST, a GET that opened no event stream).
-  ["transport-mismatch", new RegExp(TRANSPORT_MISMATCH)],
   ["bad-launch", /environment variable\b[^\n]{0,60}?\b(?:required|not set|missing|must be set)\b|\b[A-Z][A-Z0-9]{0,40}_[A-Z0-9_]{1,60} (?:is required|must be set|is not set)\b/],
 ];
 
@@ -69,7 +67,9 @@ const timedOut = (message: string): boolean => isConnectTimeout(message) || /did
  * The rule whose match ends latest wins (a process says why it died last, after any earlier noise); on a tie, the earlier rule.
  * The message goes after stderr: it is the harness's own last word (and the SDK's message repeats the last stderr lines).
  */
-export function classifyStartFailure(input: { message: string; stderr?: string }): StartFailure {
+export function classifyStartFailure(input: { message: string; stderr?: string; transportMismatch?: boolean }): StartFailure {
+  // The session saw the answer itself (an HTTP status or content type): nothing in a message or stderr outranks that.
+  if (input.transportMismatch) return { kind: "transport-mismatch", advice: START_FAILURE_ADVICE["transport-mismatch"] };
   const stderr = input.stderr ?? "";
   const tail = stderr.length > STDERR_TAIL ? stderr.slice(-STDERR_TAIL) : stderr;
   const text = `${tail}\n${input.message}`

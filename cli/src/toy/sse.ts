@@ -34,7 +34,8 @@ function makeServer(): Server {
   return server;
 }
 
-export async function startSseToy(opts: { port?: number; token?: string } = {}): Promise<SseToy> {
+/** `dropStreamAfterMs`: end each event stream that long after it opened, as a proxy idle timeout or a restart does (the session goes with it). */
+export async function startSseToy(opts: { port?: number; token?: string; dropStreamAfterMs?: number } = {}): Promise<SseToy> {
   const sessions = new Map<string, { transport: SSEServerTransport; server: Server }>();
   const seen: Record<string, number> = {};
 
@@ -60,6 +61,7 @@ export async function startSseToy(opts: { port?: number; token?: string } = {}):
         void server.close().catch(() => {});
       });
       await server.connect(transport);
+      if (opts.dropStreamAfterMs !== undefined) setTimeout(() => res.end(), opts.dropStreamAfterMs).unref();
       return;
     }
     if (url.pathname === "/messages" && method === "POST") {
