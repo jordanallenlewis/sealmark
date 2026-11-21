@@ -24,8 +24,9 @@ import { cliVersion } from "./describe.js";
 import { sendPing } from "./telemetry.js";
 import { inCi } from "./config/index.js";
 import { failureRewriter, makeSecretScrubber, runRewriter } from "./report/redact.js";
-import { inertLines } from "./report/sanitize.js";
+import { inert, inertLines } from "./report/sanitize.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
+import { DataError, dataBase, installCheck, installCheckJson, lookupKeys, renderInstallCheck } from "./install-check.js";
 import { BADGE_VARIANTS, renderBadgeSnippets, selfReportedSnippets, siteBadgeSnippets, type BadgeVariant } from "./badge-snippet.js";
 import { FORMATS, FORMAT_EXT, isFailed, renderReport, startFailureLine, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
 import { compareBaseline, parseBaseline, type BaselineDiff } from "./report/baseline.js";
@@ -413,6 +414,27 @@ function badgeCommand(values: Record<string, unknown>): CommandOutput {
   return { code: 0, stdout: renderBadgeSnippets(snippets, (variant ?? "badge") as BadgeVariant) };
 }
 
+/** `sealmark install-check <server>`: the public grade and install config from sealmark.dev's results data. Exit 3 when not listed, 4 when unreadable. */
+async function installCheckCommand(query: string | undefined, values: Record<string, unknown>): Promise<CommandOutput> {
+  if (query === undefined || !query.trim()) throw new UsageError("install-check needs a server: an npm or PyPI package name, a GitHub repository, or a sealmark.dev id (sealmark install-check @modelcontextprotocol/server-filesystem)");
+  let base: string;
+  try {
+    base = dataBase(values["data-url"] as string | undefined);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  if (!lookupKeys(query).length) throw new UsageError(`install-check: "${inert(query, 200)}" is not an npm or PyPI package name, a GitHub repository, or a sealmark.dev id or results URL`);
+  let r;
+  try {
+    r = await installCheck(query, { base });
+  } catch (e) {
+    if (!(e instanceof DataError)) throw e;
+    process.stderr.write(`sealmark: ${inert(e.message, 600)}. No grade shown. Check the connection, or open https://sealmark.dev/results/ in a browser.\n`);
+    return { code: 4 };
+  }
+  return { code: r.servers.length ? 0 : 3, stdout: values.json ? installCheckJson(r) : renderInstallCheck(r) };
+}
+
 let pingCommand: string | undefined;
 
 async function main(argv: string[]): Promise<CommandOutput> {
@@ -503,6 +525,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return diffCommand(rest[0], rest[1], { json: Boolean(values.json) });
       case "badge":
         return badgeCommand(values);
+      case "install-check":
+        return await installCheckCommand(rest[0], values);
       case "list-checks":
         return listChecksCommand({ pack: [...((values.pack as string[] | undefined) ?? []), ...((values.suite as string[] | undefined) ?? [])], json: Boolean(values.json) });
       case "config show": {
