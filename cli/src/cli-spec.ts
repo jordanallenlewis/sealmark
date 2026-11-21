@@ -83,6 +83,12 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     summary: "Check that sealmark can start your server: tools on PATH, the launcher, the sandbox, initialize and tools/list, the classification and why each pack would run or not.",
   },
   {
+    name: "inspect",
+    usage: 'inspect [--call <tool> [--args <json>]] [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--config <path>] [--profile <name>] [--server <name>] [--sandbox-dir <dir>] [--connect-timeout <sec>] [--json]',
+    summary:
+      "Start one server like run does (sandbox, scrubbed environment), list its tools, call one with arguments you give and print the reply with what the observers saw: files, requests to the harness listener, processes. Without --call it reads `call <tool> [json]` lines from stdin. Nothing is graded.",
+  },
+  {
     name: "describe",
     usage: "describe --json",
     summary: "Print the machine-readable description of this build: methodology and CLI versions, the check registry, configuration keys, commands, flags and exit codes.",
@@ -132,11 +138,11 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
 
 const ALL = CLI_COMMANDS.map((c) => c.name);
 const TOPIC: Record<string, string[]> = {
-  config: ["run", "doctor", "init", "config show", "config migrate"],
-  profile: ["run", "doctor", "config show"],
+  config: ["run", "doctor", "inspect", "init", "config show", "config migrate"],
+  profile: ["run", "doctor", "inspect", "config show"],
   pack: ["run", "list-checks", "config show"],
   suite: ["run", "list-checks", "config show"],
-  server: ["run", "doctor", "init", "config show"],
+  server: ["run", "doctor", "inspect", "init", "config show"],
 };
 
 /**
@@ -146,11 +152,11 @@ const TOPIC: Record<string, string[]> = {
 function commandsFor(name: string): string[] {
   if (name in TOPIC) return TOPIC[name];
   // `init --probes` opens the server the way doctor does, so it takes the flags that say which server and how to start it.
-  if (["sandbox-dir", "sandbox", "connect-timeout"].includes(name)) return ["run", "doctor", "init", "config show"];
+  if (["sandbox-dir", "sandbox", "connect-timeout"].includes(name)) return ["run", "doctor", "inspect", "init", "config show"];
   if (["timeout-probe", "keep-sandbox", "pack-timeout"].includes(name)) return ["run", "doctor", "config show"];
   if (name === "yes") return ["run", "init", "config show"];
-  if (["url", "start", "header", "bearer", "start-timeout"].includes(name)) return ["run", "doctor", "init", "config show"];
-  if (name === "name") return ["run", "doctor", "init", "config show"];
+  if (["url", "start", "header", "bearer", "start-timeout"].includes(name)) return ["run", "doctor", "inspect", "init", "config show"];
+  if (name === "name") return ["run", "doctor", "inspect", "init", "config show"];
   // Round 6 (config-report package adds the flags to FLAG_DEFS): they describe the server's setup, so doctor and init --probes read them too.
   if (name === "upstream" || name.startsWith("scope-") || name.startsWith("identity-")) return ["run", "doctor", "init", "config show"];
   // Round 7: --oauth starts the stub issuer the server trusts, so doctor and init --probes need it to start the server too.
@@ -165,7 +171,7 @@ const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
   { name: "version", type: "boolean", short: "v", description: "Print the sealmark version and exit.", commands: [] },
   { name: "force", type: "boolean", description: "Overwrite files that already exist.", commands: ["init", "config migrate"] },
-  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge"] },
+  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge"] },
   { name: "probes", type: "boolean", description: "init: start the server like doctor does and write one valid call per tool as a probes: block (stdout, or the config file with --write). Never prompts.", commands: ["init"] },
   { name: "write", type: "boolean", description: "init --probes: append the block to the config file; exit 2 when it already has a probes: key.", commands: ["init"] },
   { name: "from", type: "string", metavar: "<command line>", description: 'Write a config from a one-liner, for example --from "npx -y @modelcontextprotocol/server-filesystem {sandbox}".', commands: ["init"] },
@@ -178,6 +184,8 @@ const META: CliFlag[] = [
   { name: "svg", type: "string", metavar: "<path|url>", description: "badge: where your committed self-reported badge SVG is, as a README would reference it (a relative path or an https URL).", commands: ["badge"] },
   { name: "link", type: "string", metavar: "<url>", description: "badge --svg: an https URL the badge links to (for example your report or CI run).", commands: ["badge"] },
   { name: "variant", type: "string", metavar: "<badge|card|shields>", description: "badge --id: the flat badge (default), the larger card, or the same badge drawn by shields.io.", commands: ["badge"] },
+  { name: "call", type: "string", metavar: "<tool>", description: "inspect: call this tool once, print the reply and what was observed, and stop (without it, commands are read from stdin).", commands: ["inspect"] },
+  { name: "args", type: "string", metavar: "<json>", description: "inspect --call: the tool's arguments as a JSON object (default {}).", commands: ["inspect"] },
   { name: "replay", type: "string", metavar: "<report.json>", description: "Re-run with the locked settings of a previous JSON report, after verifying its config hash.", commands: ["run"] },
   { name: "fixture", type: "string", metavar: "<fs|git|sqlite>", description: "Write a fixture the sandbox generates, for hand runs: the fs layout, the git repositories or the SQLite database (DuckDB is planned).", commands: ["run"] },
   { name: "into", type: "string", metavar: "<dir>", description: "Directory for --fixture.", commands: ["run"] },
