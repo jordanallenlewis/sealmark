@@ -50,8 +50,8 @@ export const EXIT_CODES: readonly ExitCode[] = [
   { code: 0, meaning: "ok" },
   { code: 1, meaning: "a graded pack is below --fail-under (a provisional A* is below an A gate), an inconclusive pack under output.exit_policy.treat_inconclusive_as: fail, or a baseline comparison found a regression" },
   { code: 2, meaning: "usage or configuration error" },
-  { code: 3, meaning: "no pack was graded" },
-  { code: 4, meaning: "harness or server failure (the server would not start, the database was unavailable, or doctor found a failing step)" },
+  { code: 3, meaning: "no pack was graded (install-check: the server is not in the public results)" },
+  { code: 4, meaning: "harness or server failure (the server would not start, the database was unavailable, or doctor found a failing step; install-check: the public results data could not be read)" },
 ];
 
 /**
@@ -120,6 +120,13 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
       "Print README snippets (Markdown, HTML, reStructuredText) for the sealmark.dev badge of a server the public fleet grades and lists with a badge (--id), or for a self-reported badge SVG you committed (--svg). Prints, never writes, and contacts nothing.",
   },
   {
+    name: "install-check",
+    usage: "install-check <server> [--json] [--data-url <url>]",
+    summary:
+      "Before installing a server, print the grade sealmark.dev's public fleet gave it and the MCP client config that starts the graded version. Reads the public results data (GETs to sealmark.dev: the lookup index, then each server the name matches); starts, grades and writes nothing. Exit 3 when the server is not in the public results, 4 when the data cannot be read.",
+    args: [{ name: "server", required: true, description: "An npm or PyPI package name, a GitHub repository (owner/repo or URL), a sealmark.dev results URL or id, or a prefixed key (npm:, pypi:, github:, id:)." }],
+  },
+  {
     name: "config show",
     usage: 'config show [--origins] [--json] [--config <path>] [--profile <name>] [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--soft-fail] [--format <fmt>]...',
     summary: "Print the merged configuration, with the origin of every value on request.",
@@ -171,7 +178,7 @@ const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
   { name: "version", type: "boolean", short: "v", description: "Print the sealmark version and exit.", commands: [] },
   { name: "force", type: "boolean", description: "Overwrite files that already exist.", commands: ["init", "config migrate"] },
-  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge"] },
+  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge", "install-check"] },
   { name: "probes", type: "boolean", description: "init: start the server like doctor does and write one valid call per tool as a probes: block (stdout, or the config file with --write). Never prompts.", commands: ["init"] },
   { name: "write", type: "boolean", description: "init --probes: append the block to the config file; exit 2 when it already has a probes: key.", commands: ["init"] },
   { name: "from", type: "string", metavar: "<command line>", description: 'Write a config from a one-liner, for example --from "npx -y @modelcontextprotocol/server-filesystem {sandbox}".', commands: ["init"] },
@@ -183,6 +190,7 @@ const META: CliFlag[] = [
   { name: "id", type: "string", metavar: "<id>", description: "badge: the sealmark.dev server id, the last part of https://sealmark.dev/results/<id>/.", commands: ["badge"] },
   { name: "svg", type: "string", metavar: "<path|url>", description: "badge: where your committed self-reported badge SVG is, as a README would reference it (a relative path or an https URL).", commands: ["badge"] },
   { name: "link", type: "string", metavar: "<url>", description: "badge --svg: an https URL the badge links to (for example your report or CI run).", commands: ["badge"] },
+  { name: "data-url", type: "string", metavar: "<url>", description: "install-check: where to read the public results data from, a copy of https://sealmark.dev/data/v1 (the default).", commands: ["install-check"] },
   { name: "variant", type: "string", metavar: "<badge|card|shields>", description: "badge --id: the flat badge (default), the larger card, or the same badge drawn by shields.io.", commands: ["badge"] },
   { name: "call", type: "string", metavar: "<tool>", description: "inspect: call this tool once, print the reply and what was observed, and stop (without it, commands are read from stdin).", commands: ["inspect"] },
   { name: "args", type: "string", metavar: "<json>", description: "inspect --call: the tool's arguments as a JSON object (default {}).", commands: ["inspect"] },
@@ -257,6 +265,7 @@ export const USAGE_EXAMPLES: readonly { argv: readonly string[]; does: string }[
   { argv: ["run", "--url", "http://127.0.0.1:8000/mcp", "--bearer", "${MCP_TOKEN}"], does: "grade a running Streamable HTTP server" },
   { argv: ["run", "--fail-under", "B", "--format", "sarif", "--out", "sealmark.sarif"], does: "a CI gate, with a report for code scanning" },
   { argv: ["explain", "fs-read-escape"], does: "what one check probes, and how to fix a failure" },
+  { argv: ["install-check", "@modelcontextprotocol/server-filesystem"], does: "a server's public grade and client config, before you install it" },
 ];
 
 /** One example as a reader would type it: arguments with a space or a placeholder are quoted ('${VAR}' single, so the shell leaves it to Sealmark). */
