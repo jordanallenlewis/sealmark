@@ -301,10 +301,16 @@ describe("install-check: reading the data", () => {
 
   it("unreadable data is a DataError, never a guess: offline, timeout, HTTP error, not JSON, a file for another id", async () => {
     await assert.rejects(installCheck("dbhub", { base: BASE, fetcher: async () => Promise.reject(Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } })) }), /could not reach https:\/\/example\.test\/data\/v1\/lookup\.json \(ENOTFOUND\)/);
-    await assert.rejects(
-      installCheck("dbhub", { base: BASE, timeoutMs: 50, fetcher: (_url, init) => new Promise((_res, rej) => init.signal.addEventListener("abort", () => rej(init.signal.reason))) }),
-      /no answer in 0 s|no answer in/,
-    );
+    // AbortSignal.timeout's timer does not hold the event loop open (Node 22); a real hung request holds it with its socket.
+    const hold = setTimeout(() => {}, 5_000);
+    try {
+      await assert.rejects(
+        installCheck("dbhub", { base: BASE, timeoutMs: 50, fetcher: (_url, init) => new Promise((_res, rej) => init.signal.addEventListener("abort", () => rej(init.signal.reason))) }),
+        /no answer in 0 s/,
+      );
+    } finally {
+      clearTimeout(hold);
+    }
     await assert.rejects(installCheck("dbhub", { base: BASE, fetcher: async () => new Response("x", { status: 503 }) }), /answered HTTP 503/);
     await assert.rejects(installCheck("dbhub", { base: BASE, fetcher: async () => new Response("<html>") }), /is not JSON/);
     await assert.rejects(installCheck("dbhub", { base: BASE, fetcher: async (url) => new Response(JSON.stringify(url.endsWith("lookup.json") ? LOOKUP : server("other"))) }), /does not describe dbhub/);
