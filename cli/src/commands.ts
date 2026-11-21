@@ -9,6 +9,9 @@ import { renderDoctor, rulesOf, runDoctor, type DoctorCapture } from "./doctor.j
 import { generateValidProbes, probesJson, renderProbesBlock } from "./probes.js";
 import { ExplainError, explainCheck, listChecks, renderExplain, renderListChecks } from "./explain.js";
 import { writeFixture } from "./fixtures.js";
+import { inertLines } from "./report/sanitize.js";
+import { InspectFailure, InspectUsageError, linesOf, parseArgsJson, runInspect } from "./inspect.js";
+import { cliVersion } from "./describe.js";
 
 /** Bad flag, flag combination or argument: exit 2. */
 export class UsageError extends Error {}
@@ -152,6 +155,43 @@ export async function doctorCommand(cfg: EffectiveConfig, o: { server?: string; 
     throw e;
   }
   return { code: report.exitCode, stdout: o.json ? `${JSON.stringify(report, null, 2)}\n` : renderDoctor(report) };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// inspect
+// ---------------------------------------------------------------------------------------------------------
+
+/** `sealmark inspect`: the work is in inspect.ts; this maps its errors onto exit codes and wires stdin and stdout. */
+export async function inspectCommand(cfg: EffectiveConfig, o: { server?: string; call?: string; args?: string; json: boolean; startupTimeoutMs?: number; log: (s: string) => void }): Promise<CommandOutput> {
+  if (o.args !== undefined && o.call === undefined) throw new UsageError("--args goes with --call <tool>");
+  let call: { tool: string; args: Record<string, unknown> } | undefined;
+  if (o.call !== undefined) {
+    const args = parseArgsJson(o.args ?? "");
+    if (typeof args === "string") throw new UsageError(`--args: ${args}`);
+    call = { tool: o.call, args };
+  }
+  // A reader that leaves early (| head) must not crash the run and leave the sandbox behind: the cleanup runs, the output just stops.
+  process.stdout.on("error", () => {});
+  try {
+    const r = await runInspect({
+      cfg,
+      ...(o.server ? { server: o.server } : {}),
+      ...(call ? { call } : { input: linesOf(process.stdin), interactive: Boolean(process.stdin.isTTY) }),
+      json: o.json,
+      ...(o.startupTimeoutMs ? { startupTimeoutMs: o.startupTimeoutMs } : {}),
+      clientVersion: cliVersion(),
+      log: o.log,
+      out: (s) => process.stdout.write(s),
+    });
+    return { code: r.exitCode };
+  } catch (e) {
+    if (e instanceof InspectUsageError) throw new UsageError(e.message);
+    if (e instanceof InspectFailure) {
+      process.stderr.write(`sealmark: ${inertLines(e.message)}\n`);
+      return { code: 4 };
+    }
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------
