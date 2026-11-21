@@ -13,6 +13,7 @@ import {
   describeCommand,
   explainCommand,
   doctorCommand,
+  inspectCommand,
   fixtureCommand,
   initCommand,
   listChecksCommand,
@@ -513,6 +514,11 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return configProfiles({ cwd, flags: values, env: process.env }, Boolean(values.json));
       case "config migrate":
         return configMigrate(resolve(values.config ?? "sealmark.yaml"), { force: Boolean(values.force) }, logErr);
+      case "inspect": {
+        const cfg = loadEffectiveConfig({ cwd, flags: values, env: process.env });
+        for (const w of cfg.warnings) logErr(`warning: ${w}`);
+        return await inspectCommand(cfg, { server: values.server, call: values.call as string | undefined, args: values.args as string | undefined, json: Boolean(values.json), startupTimeoutMs: values["connect-timeout"] !== undefined ? cfg.timeouts.connect_ms : undefined, log: logSafe });
+      }
       case "doctor": {
         const cfg = loadEffectiveConfig({ cwd, flags: values, env: process.env });
         for (const w of cfg.warnings) logErr(`warning: ${w}`);
