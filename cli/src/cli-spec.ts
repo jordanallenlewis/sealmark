@@ -127,6 +127,13 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     args: [{ name: "server", required: true, description: "An npm or PyPI package name, a GitHub repository (owner/repo or URL), a sealmark.dev results URL or id, or a prefixed key (npm:, pypi:, github:, id:)." }],
   },
   {
+    name: "share",
+    usage: "share <report.json> [--json]",
+    summary:
+      "Print a sealmark.dev/report/ link that opens a JSON report in the browser. The report travels inside the link, after the #, which a browser never sends to a server: nothing is uploaded, stored or contacted. The link carries what the page shows (server, versions, grades, checks with their evidence lines, what was not covered), not the environment or the full report file.",
+    args: [{ name: "report.json", required: true, description: "A JSON report: sealmark run --format json output, or a --write-baseline file." }],
+  },
+  {
     name: "config show",
     usage: 'config show [--origins] [--json] [--config <path>] [--profile <name>] [--url <url>] [--start "<command line>"] [--header "Name: value"]... [--bearer <token>] [--start-timeout <sec>] [--name <name>] [--soft-fail] [--format <fmt>]...',
     summary: "Print the merged configuration, with the origin of every value on request.",
@@ -178,7 +185,7 @@ const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
   { name: "version", type: "boolean", short: "v", description: "Print the sealmark version and exit.", commands: [] },
   { name: "force", type: "boolean", description: "Overwrite files that already exist.", commands: ["init", "config migrate"] },
-  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge", "install-check"] },
+  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge", "install-check", "share"] },
   { name: "probes", type: "boolean", description: "init: start the server like doctor does and write one valid call per tool as a probes: block (stdout, or the config file with --write). Never prompts.", commands: ["init"] },
   { name: "write", type: "boolean", description: "init --probes: append the block to the config file; exit 2 when it already has a probes: key.", commands: ["init"] },
   { name: "from", type: "string", metavar: "<command line>", description: 'Write a config from a one-liner, for example --from "npx -y @modelcontextprotocol/server-filesystem {sandbox}".', commands: ["init"] },
@@ -266,6 +273,7 @@ export const USAGE_EXAMPLES: readonly { argv: readonly string[]; does: string }[
   { argv: ["run", "--url", "http://127.0.0.1:8000/mcp", "--bearer", "${MCP_TOKEN}"], does: "grade a running Streamable HTTP server" },
   { argv: ["run", "--fail-under", "B", "--format", "sarif", "--out", "sealmark.sarif"], does: "a CI gate, with a report for code scanning" },
   { argv: ["explain", "fs-read-escape"], does: "what one check probes, and how to fix a failure" },
+  { argv: ["share", "report.json"], does: "a link that opens the report in the browser, with nothing uploaded" },
   { argv: ["install-check", "@modelcontextprotocol/server-filesystem"], does: "a server's public grade and client config, before you install it" },
 ];
 
