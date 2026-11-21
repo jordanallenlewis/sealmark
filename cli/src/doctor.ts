@@ -8,7 +8,7 @@ import { TEMPLATE_COMMAND, displaySpec, expand, usesPlaceholders, type TemplateC
 import { CONNECT_TIMEOUT_ADVICE, isConnectTimeout, isPortInUse, launchServer, PORT_IN_USE_ADVICE, stopOnSignals, type LaunchedServer } from "./launch.js";
 import { listSegments, type IpcsRow } from "./embedded.js";
 import type { EffectiveConfig, NamedServer } from "./config/index.js";
-import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, driftHint, resolvePackage, type OpenOptions, type ToolInfo } from "./mcp.js";
+import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, driftHint, resolvePackage, ssePackSkip, type OpenOptions, type ToolInfo } from "./mcp.js";
 import { effectsGateReason } from "./packs/effects.js";
 import { ensureGitFixture } from "./packs/git.js";
 import { RUN_ORDER, getPack } from "./packs/index.js";
@@ -314,6 +314,8 @@ const DUMMY_DB = { host: "127.0.0.1", port: "1", user: "sm_admin", password: "un
 interface GateInput {
   startedOk: boolean;
   transport: "stdio" | "http";
+  /** server.transport: sse. The http and oauth packs are skipped for it, as run skips them. */
+  sse?: boolean;
   sandboxOn: boolean;
   active: boolean;
   classification: ToolClassification[];
@@ -356,6 +358,7 @@ function gate(id: PackId, g: GateInput): string | undefined {
     if (id_ === "upstream" && !g.validProbes) return NO_VALID_CALL;
   }
   if (id === "http" && g.transport !== "http") return "the server is started over stdio; the http pack needs server.url";
+  if ((id === "http" || id === "oauth") && g.sse) return ssePackSkip(id);
   if (id_ === "oauth" && g.transport !== "http") return "the oauth pack grades the authorization of an HTTP server (server.url); a stdio server takes its credentials from the environment";
   if (id === "net" && g.remoteHost) return `the server runs on ${g.remoteHost}, so it cannot reach the harness's loopback listener; the net pack is only meaningful for stdio servers or an HTTP server on this machine`;
   if (id === "custom" && !g.probes) return "no probes: are declared in the config";
@@ -484,6 +487,7 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
         args: (spec.args ?? []).map((a) => expand(a, ctx)),
         env: { ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) },
         url: expand(spec.url!, ctx),
+        ...(spec.transport === "sse" ? { transport: "sse" as const } : {}),
         timeoutMs: (spec.start_timeout_sec ?? 60) * 1000,
         // Inside the sandbox, as run starts it: the sandbox root as cwd and, unless sandbox.scrub_env is off, the scrubbed environment.
         ...(sandboxOn ? { cwd: sb.root, ...(cfg.sandbox.scrub_env ? { baseEnv: sb.env({ ...caEnv, ...Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])) }) } : {}) } : {}),
@@ -614,6 +618,7 @@ async function checkServer(named: NamedServer, cfg: EffectiveConfig, sb: Sandbox
   const gin: GateInput = {
     startedOk,
     transport,
+    ...(spec.transport === "sse" ? { sse: true } : {}),
     sandboxOn,
     active: cfg.active,
     classification,

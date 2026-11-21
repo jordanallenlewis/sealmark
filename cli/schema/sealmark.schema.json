@@ -4455,9 +4455,24 @@
             "flagOnly": false
           }
         },
+        "transport": {
+          "enum": [
+            "streamable-http",
+            "sse"
+          ],
+          "description": "How Sealmark talks to url: streamable-http (the current MCP transport) or sse (the older HTTP+SSE transport: a GET event stream, usually at /sse, that names the endpoint to POST to). Only with url. With sse the http and oauth packs do not run: they grade a Streamable HTTP endpoint.",
+          "default": "streamable-http",
+          "x-sealmark": {
+            "since": "0.3-draft",
+            "standardLocked": false,
+            "mergeable": false,
+            "secret": false,
+            "flagOnly": false
+          }
+        },
         "url": {
           "type": "string",
-          "description": "URL of a Streamable HTTP server. Alone it must already be running; with command, Sealmark starts it and waits for this URL.",
+          "description": "URL of an HTTP MCP server (Streamable HTTP; set transport: sse for the older HTTP+SSE transport). Alone it must already be running; with command, Sealmark starts it and waits for this URL.",
           "x-sealmark": {
             "since": "0.1-draft",
             "standardLocked": false,
@@ -4606,9 +4621,24 @@
               "flagOnly": false
             }
           },
+          "transport": {
+            "enum": [
+              "streamable-http",
+              "sse"
+            ],
+            "description": "How Sealmark talks to url: streamable-http (the current MCP transport) or sse (the older HTTP+SSE transport: a GET event stream, usually at /sse, that names the endpoint to POST to). Only with url. With sse the http and oauth packs do not run: they grade a Streamable HTTP endpoint.",
+            "default": "streamable-http",
+            "x-sealmark": {
+              "since": "0.3-draft",
+              "standardLocked": false,
+              "mergeable": false,
+              "secret": false,
+              "flagOnly": false
+            }
+          },
           "url": {
             "type": "string",
-            "description": "URL of a Streamable HTTP server. Alone it must already be running; with command, Sealmark starts it and waits for this URL.",
+            "description": "URL of an HTTP MCP server (Streamable HTTP; set transport: sse for the older HTTP+SSE transport). Alone it must already be running; with command, Sealmark starts it and waits for this URL.",
             "x-sealmark": {
               "since": "0.2-draft",
               "standardLocked": false,

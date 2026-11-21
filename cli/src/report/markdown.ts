@@ -34,7 +34,7 @@ function one(r: RunResult, level: "#" | "##", verbose = false, ropts: RedactOpti
     out.push("", "Grades below are custom grades: they are not comparable to a STANDARD grade, and a custom run gets no badge.", "");
   }
 
-  out.push(`${sub} Server`, "", `- Command: ${code(r.server.command)}`, `- Transport: ${r.server.transport}; ${r.server.tools.length} tool(s)`);
+  out.push(`${sub} Server`, "", `- Command: ${code(r.server.command)}`, `- Transport: ${r.server.transport}${r.server.httpTransport === "sse" ? " (HTTP+SSE)" : ""}; ${r.server.tools.length} tool(s)`);
   const env = Object.entries(r.server.env);
   if (env.length) out.push(`- Environment: ${env.map(([k, v]) => code(`${k}=${v}`)).join(", ")}`);
   const pkg = packageLabel(r);

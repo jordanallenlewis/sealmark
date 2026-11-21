@@ -251,6 +251,7 @@ export async function runInspect(o: InspectOptions): Promise<InspectResult> {
           args: (spec.args ?? []).map((a) => expand(a, ctx)),
           env: Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)])),
           url: expand(spec.url!, ctx),
+          ...(spec.transport === "sse" ? { transport: "sse" as const } : {}),
           timeoutMs: (spec.start_timeout_sec ?? 60) * 1000,
           ...(sandboxOn && sb ? { cwd: sb.root, ...(cfg.sandbox.scrub_env ? { baseEnv: sb.env(Object.fromEntries(Object.entries(spec.env ?? {}).map(([k, v]) => [k, expand(v, ctx)]))) } : {}) } : {}),
           onProgress: o.log,

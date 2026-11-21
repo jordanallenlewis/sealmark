@@ -293,9 +293,13 @@ function toSpec(raw: Record<string, unknown>, label: string, at: string, issues:
     c.warnings.push(`${at}: ${which} only apply to an HTTP server (url), and ${label} is a stdio server: ${headers ? "the headers are" : "start_timeout_sec is"} ignored. Add a url (with command, Sealmark starts it and waits for the url).`);
   }
 
+  const transport = raw.transport === "sse" || raw.transport === "streamable-http" ? raw.transport : undefined;
+  if (transport && !url) issues.push(`${at}: ${label}.transport only applies to an HTTP server (url), and ${label} has no url. Add the server's url (for sse, its event-stream URL, usually ending in /sse) or remove transport.`);
   const spec: ServerSpec = {
     ...(command ? { command } : {}),
     ...(url ? { url } : {}),
+    // Only sse is carried: streamable-http is the default, so a config that names it gives the same spec (and report) as one that does not.
+    ...(url && transport === "sse" ? { transport } : {}),
     args: ((raw.args as unknown[] | undefined) ?? []).map((a) => anchorPath(String(a), baseDir)),
     env: str(raw.env),
     ...(headers ? { headers } : {}),

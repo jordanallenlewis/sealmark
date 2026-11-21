@@ -17,7 +17,7 @@ import { CA_ENV_VARS, OAUTH_SUB, OAUTH_TRUST_HINT, accessTokenClaims, canonicalR
 import { normVersion, versionWarnings } from "./resolve.js";
 import { gradePack } from "./grade.js";
 import { classifyStartFailure, type StartFailure } from "./start-failure.js";
-import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, usesBearer, type OpenOptions } from "./mcp.js";
+import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, ssePackSkip, usesBearer, type OpenOptions } from "./mcp.js";
 import { MAX_TOOLS_PROBED, applyChecksConfig, boundSeen, protocolFailure, refusalQuality, runCore, variantsFor } from "./packs/core.js";
 import { runDb } from "./packs/db.js";
 import { effectsGateReason } from "./packs/effects.js";
@@ -33,7 +33,7 @@ import { ensureSqliteFixture } from "./sqlite-fixtures.js";
 import { stageFiles } from "./staged-files.js";
 import { captureSurface } from "./surface.js";
 import { CallIndex, type WireEvent } from "./trace.js";
-import { CANDIDATE_PACKS, type AuthServerStub, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
+import { CANDIDATE_PACKS, type AuthServerStub, type CheckResult, type ConfigIntegrity, type DestroyResult, type EffectiveConfig, type HttpTransport, type IdentityAccess, type IdentityName, type Pack, type PackCtx, type PackId, type RunResult, type Sandbox, type SandboxInfo, type SealmarkConfig, type SqlTool, type Suggestion, type ToolClassification, type UpstreamStub } from "./types.js";
 
 export interface RunOptions {
   /** The single-server view of the configuration. Used to build an EffectiveConfig when `effective` is absent (tests, library callers). */
@@ -105,15 +105,18 @@ export const UNAUTHORIZED_HINT = "the server answered 401: pass a token with --b
  * The MCP SDK's error does not carry the HTTP status, so a server that needs a token and was given none would only say
  * "Error POSTing to endpoint". When no Authorization header is configured, ask the URL once more; a 401 gets a hint that says what to type.
  */
-async function unauthorizedHint(spec: { url?: string; headers?: Record<string, string> }, ctx: TemplateCtx): Promise<string | undefined> {
+async function unauthorizedHint(spec: { url?: string; transport?: HttpTransport; headers?: Record<string, string> }, ctx: TemplateCtx): Promise<string | undefined> {
   if (!spec.url || Object.keys(spec.headers ?? {}).some((k) => k.toLowerCase() === "authorization")) return undefined;
   try {
-    const r = await fetch(expandHarness(spec.url, ctx), {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...Object.fromEntries(Object.entries(spec.headers ?? {}).map(([k, v]) => [k, expandHarness(v, ctx)])) },
-      body: "{}",
-      signal: AbortSignal.timeout(3_000),
-    });
+    const headers = Object.fromEntries(Object.entries(spec.headers ?? {}).map(([k, v]) => [k, expandHarness(v, ctx)]));
+    const signal = AbortSignal.timeout(3_000);
+    // An HTTP+SSE server asks for its token on the event-stream GET, the request its client opens first.
+    const r = await fetch(
+      expandHarness(spec.url, ctx),
+      spec.transport === "sse"
+        ? { method: "GET", headers: { accept: "text/event-stream", ...headers }, signal }
+        : { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers }, body: "{}", signal },
+    );
     await r.body?.cancel().catch(() => {});
     return r.status === 401 ? UNAUTHORIZED_HINT : undefined;
   } catch {
@@ -697,6 +700,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           ...(sandboxOn ? { cwd: sb.root, ...(eff.sandbox.scrub_env ? { baseEnv: sb.env(launchEnv) } : {}) } : {}),
           ...(logObs ? { onOutput: (chunk: string) => logObs.push(chunk, "launched") } : {}),
           url: expandHarness(spec.url!, lctx),
+          ...(spec.transport === "sse" ? { transport: "sse" as const } : {}),
           timeoutMs: (spec.start_timeout_sec ?? 60) * 1000,
           onProgress: log,
           onStarted: (h) => {
@@ -780,7 +784,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     try {
       session = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv }, "core");
     } catch (e) {
-      const rejected = e instanceof SessionError && authStub && transport === "http" ? await tokenRefused(spec, baseCtx()) : undefined;
+      // Not under HTTP+SSE: the oauth pack does not run there, and a POST to the event-stream URL says nothing about the stub's token.
+      const rejected = e instanceof SessionError && authStub && transport === "http" && spec.transport !== "sse" ? await tokenRefused(spec, baseCtx()) : undefined;
       if (rejected) {
         oauthRejected = rejected;
         log(`the server refused the token the stub issuer signed (HTTP ${rejected.status}); ${OAUTH_TRUST_HINT}`);
@@ -792,7 +797,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         const what = isConnectTimeout(e.message) ? connectTimeoutMessage(eff.timeouts.connect_ms) : `could not start or talk to the server: ${e.message}.`;
         // The kind is read from the SDK's own message (not `what`, which rewrites a timeout) and the server's stderr.
         // Not for a run that was interrupted: the server did not fail, the harness stopped starting it.
-        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr });
+        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr, transportMismatch: e.transportMismatch });
         throw new HarnessError(`${what}${hint}`, { hint: [auth, e.hint].filter(Boolean).join(" ") || undefined, stderr: e.stderr, startFailure });
       } else throw e;
     }
@@ -965,6 +970,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     const reach = listenerReachable(spec, eff.env);
     const gate = (id: PackId): string | undefined => {
       if (id === "oauth" && transport !== "http") return "the oauth pack grades the authorization of an HTTP server (server.url); a stdio server takes its credentials from the environment";
+      // Both packs send their own raw Streamable HTTP requests to server.url; against an HTTP+SSE event-stream URL their verdicts would describe nothing.
+      if ((id === "http" || id === "oauth") && spec.transport === "sse") return ssePackSkip(id);
       // The oauth pack needs no tool list: when the server refused the stub's token it runs, and its control says why (inconclusive).
       if (!session && !(id === "oauth" && oauthRejected)) return oauthRejected ? `the server refused the token the harness's stub issuer signed, so its tool list could not be read; ${OAUTH_TRUST_HINT}` : "the server's tool list could not be read";
       if (id === "exec" && !active) return "the exec pack runs only with --active";
@@ -1301,6 +1308,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         ...(selfStarted ? { launched: true } : {}),
         env: { ...shown.env, ...(transport === "stdio" || selfStarted ? Object.fromEntries(CANARY_ENV.map((k) => [k, "<canary>"])) : {}) },
         transport,
+        ...(spec.transport === "sse" ? { httpTransport: "sse" as const } : {}),
         tools: tools.map((t) => t.name),
         surface: captureSurface(tools, classification),
         sqlTools,

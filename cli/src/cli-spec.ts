@@ -162,7 +162,7 @@ function commandsFor(name: string): string[] {
   if (["sandbox-dir", "sandbox", "connect-timeout"].includes(name)) return ["run", "doctor", "inspect", "init", "config show"];
   if (["timeout-probe", "keep-sandbox", "pack-timeout"].includes(name)) return ["run", "doctor", "config show"];
   if (name === "yes") return ["run", "init", "config show"];
-  if (["url", "start", "header", "bearer", "start-timeout"].includes(name)) return ["run", "doctor", "inspect", "init", "config show"];
+  if (["url", "transport", "start", "header", "bearer", "start-timeout"].includes(name)) return ["run", "doctor", "inspect", "init", "config show"];
   if (name === "name") return ["run", "doctor", "inspect", "init", "config show"];
   // Round 6 (config-report package adds the flags to FLAG_DEFS): they describe the server's setup, so doctor and init --probes read them too.
   if (name === "upstream" || name.startsWith("scope-") || name.startsWith("identity-")) return ["run", "doctor", "init", "config show"];
@@ -172,7 +172,7 @@ function commandsFor(name: string): string[] {
 }
 
 /** Flags `init` accepts only together with --probes (they select and start the server): without it they are a usage error, not silently ignored. */
-export const INIT_PROBES_ONLY = new Set(["json", "url", "start", "header", "bearer", "start-timeout", "name", "connect-timeout", "sandbox", "sandbox-dir", "upstream", "oauth", "oauth-tls", "write", "scope-tool", "scope-allow", "scope-deny", "identity-a", "identity-b"]);
+export const INIT_PROBES_ONLY = new Set(["json", "url", "transport", "start", "header", "bearer", "start-timeout", "name", "connect-timeout", "sandbox", "sandbox-dir", "upstream", "oauth", "oauth-tls", "write", "scope-tool", "scope-allow", "scope-deny", "identity-a", "identity-b"]);
 
 const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
@@ -208,6 +208,7 @@ function metavarFor(name: string): string {
   if (name === "header") return '"Name: value"';
   if (name === "bearer") return "<token>";
   if (name === "start-timeout") return "<sec>";
+  if (name === "transport") return "<streamable-http|sse>";
   if (name === "name") return "<name>";
   if (name === "fail-under") return "<A-F>";
   if (name === "timeout-probe" || name === "connect-timeout" || name === "pack-timeout") return "<sec>";

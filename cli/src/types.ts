@@ -266,11 +266,16 @@ export interface SqlTool {
   args?: Record<string, string | number | boolean>;
 }
 
+/** The MCP HTTP transports Sealmark speaks to server.url. "sse" is the HTTP+SSE transport of protocol version 2024-11-05. */
+export type HttpTransport = "streamable-http" | "sse";
+
 export interface ServerSpec {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  /** How Sealmark talks to url: Streamable HTTP (the default) or the older HTTP+SSE transport (a GET event stream that names a POST endpoint). */
+  transport?: HttpTransport;
   headers?: Record<string, string>;
   /** With command + url: seconds to wait for url to answer after starting command (default 60). */
   start_timeout_sec?: number;
@@ -488,6 +493,8 @@ export interface RunResult {
     launched?: boolean;
     env: Record<string, string>;
     transport: "stdio" | "http";
+    /** Present only when the HTTP server was reached over the older HTTP+SSE transport (server.transport: sse). Absent means Streamable HTTP (or stdio). */
+    httpTransport?: "sse";
     tools: string[];
     /** The tool surface this run saw, for `--fail-on drift` and `sealmark diff`. Absent in reports written before 0.2.1. */
     surface?: ToolSurface[];
