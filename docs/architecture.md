@@ -260,8 +260,8 @@ Exit codes:
 | 0 | ok |
 | 1 | a graded pack is below `--fail-under` (a provisional `A*` is below an A gate), an inconclusive pack counts as failing (`output.exit_policy.treat_inconclusive_as: fail`, which the `ci` profile sets), or a pack regressed against a baseline |
 | 2 | usage or configuration error |
-| 3 | no pack was graded |
-| 4 | the harness or the server failed to run |
+| 3 | no pack was graded (`install-check`: the server is not in the public results) |
+| 4 | the harness or the server failed to run (`install-check`: the public results data could not be read) |
 | 129, 130, 143 | the run was stopped by SIGHUP, SIGINT or SIGTERM (128 plus the signal number), after cleanup. The last line on stderr is `sealmark exit 130: interrupted` (with the signal's own code; `stopped` instead of `interrupted` for SIGTERM and SIGHUP), even when the signal landed as the last pack finished, so the line printed and the code returned never disagree |
 
 With several servers the exit code is the worst of them. A gate cannot look green while a requested pack could not be judged.
@@ -441,6 +441,7 @@ These are by design or not yet built. Every report lists the relevant ones under
 | `cli/src/grade.ts` | The grading function |
 | `cli/src/report/`, `cli/src/report.ts` | Renderers, sanitizing, redaction, baseline, exit codes |
 | `cli/src/badge-snippet.ts` | `sealmark badge`: README snippets (Markdown, HTML, reStructuredText) for a sealmark.dev badge or a committed self-reported one; text only, no network, reads no report |
+| `cli/src/install-check.ts` | `sealmark install-check`: reads sealmark.dev's public results data (lookup.json, then each named server's file), prints the grade and the install config the results page would show (the site's lookup-key and install-config rules, ported); starts, grades and writes nothing |
 | `cli/src/inspect.ts` | `sealmark inspect`: starts one server in the sandbox like doctor, lists tools, makes the calls you type and reports the reply with the files, loopback-listener requests, processes and stderr the observers saw during each call; grades nothing |
 | `cli/src/toy/` | Deliberately good and bad toy servers that every check is tested against; `scoped-http.ts` is the round 6 fixture (a policy-heavy data server with 21 broken modes and 5 near misses, `test/r6-fixture.e2e.test.ts`) |
 | `cli/src/test/` | The test suite |
