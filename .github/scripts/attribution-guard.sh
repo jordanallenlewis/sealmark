@@ -73,7 +73,7 @@ for c in $commits; do
   botmerge=0
   if [ "$EVENT" = push ]; then
     # drop only GitHub's exact co-author line for the bot addresses; any other co-author line stays and fails
-    scanmsg=$(grep -Ev "$BOT_COAUTHOR_RE" <<< "$msg"; true)
+    scanmsg=$(grep -aEv "$BOT_COAUTHOR_RE" <<< "$msg"; true)
     if grep -Eq "$BOT_AUTHOR_RE" <<< "$ae" && [ "$ce" = noreply@github.com ]; then botmerge=1; fi
   fi
   scan "commit $s message" <<< "$scanmsg"
