@@ -17,7 +17,7 @@ import { CA_ENV_VARS, OAUTH_SUB, OAUTH_TRUST_HINT, accessTokenClaims, canonicalR
 import { normVersion, versionWarnings } from "./resolve.js";
 import { gradePack } from "./grade.js";
 import { classifyStartFailure, type StartFailure } from "./start-failure.js";
-import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, usesBearer, type OpenOptions } from "./mcp.js";
+import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, ssePackSkip, usesBearer, type OpenOptions } from "./mcp.js";
 import { MAX_TOOLS_PROBED, applyChecksConfig, boundSeen, protocolFailure, refusalQuality, runCore, variantsFor } from "./packs/core.js";
 import { runDb } from "./packs/db.js";
 import { effectsGateReason } from "./packs/effects.js";
@@ -784,7 +784,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     try {
       session = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv }, "core");
     } catch (e) {
-      const rejected = e instanceof SessionError && authStub && transport === "http" ? await tokenRefused(spec, baseCtx()) : undefined;
+      // Not under HTTP+SSE: the oauth pack does not run there, and a POST to the event-stream URL says nothing about the stub's token.
+      const rejected = e instanceof SessionError && authStub && transport === "http" && spec.transport !== "sse" ? await tokenRefused(spec, baseCtx()) : undefined;
       if (rejected) {
         oauthRejected = rejected;
         log(`the server refused the token the stub issuer signed (HTTP ${rejected.status}); ${OAUTH_TRUST_HINT}`);
@@ -796,7 +797,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         const what = isConnectTimeout(e.message) ? connectTimeoutMessage(eff.timeouts.connect_ms) : `could not start or talk to the server: ${e.message}.`;
         // The kind is read from the SDK's own message (not `what`, which rewrites a timeout) and the server's stderr.
         // Not for a run that was interrupted: the server did not fail, the harness stopped starting it.
-        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr });
+        const startFailure = finished ? undefined : classifyStartFailure({ message: e.message, stderr: e.stderr, transportMismatch: e.transportMismatch });
         throw new HarnessError(`${what}${hint}`, { hint: [auth, e.hint].filter(Boolean).join(" ") || undefined, stderr: e.stderr, startFailure });
       } else throw e;
     }
@@ -970,7 +971,7 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     const gate = (id: PackId): string | undefined => {
       if (id === "oauth" && transport !== "http") return "the oauth pack grades the authorization of an HTTP server (server.url); a stdio server takes its credentials from the environment";
       // Both packs send their own raw Streamable HTTP requests to server.url; against an HTTP+SSE event-stream URL their verdicts would describe nothing.
-      if ((id === "http" || id === "oauth") && spec.transport === "sse") return `the server speaks the older HTTP+SSE transport (server.transport: sse), and the ${id} pack grades a Streamable HTTP endpoint`;
+      if ((id === "http" || id === "oauth") && spec.transport === "sse") return ssePackSkip(id);
       // The oauth pack needs no tool list: when the server refused the stub's token it runs, and its control says why (inconclusive).
       if (!session && !(id === "oauth" && oauthRejected)) return oauthRejected ? `the server refused the token the harness's stub issuer signed, so its tool list could not be read; ${OAUTH_TRUST_HINT}` : "the server's tool list could not be read";
       if (id === "exec" && !active) return "the exec pack runs only with --active";
