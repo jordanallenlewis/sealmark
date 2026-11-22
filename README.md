@@ -116,7 +116,7 @@ For the full design (run lifecycle, components, verdict model, trust model, and 
 
 ## Usage counter (off by default)
 
-Sealmark sends nothing unless you set `SEALMARK_TELEMETRY=1`, with one exception you ask for by name: `sealmark install-check <server>` reads the public results data from `https://sealmark.dev/data/v1/` (ordinary HTTPS GETs of `lookup.json` and of the file of each server the name matches; like any web request they carry your IP address and Node's default User-Agent, and the server you looked up is in the request path; nothing else is sent). With `SEALMARK_TELEMETRY=1` set, each command sends one ping when it finishes, and prints the exact JSON to stderr first:
+Sealmark sends nothing unless you set `SEALMARK_TELEMETRY=1`, with one exception you ask for by name: `sealmark install-check <server>`, and the `get_grade` and `find_server` tools of `sealmark mcp`, read the public results data from `https://sealmark.dev/data/v1/` (ordinary HTTPS GETs of `lookup.json`, of `servers.json` (`find_server` only) and of the file of each server the name matches; like any web request they carry your IP address and Node's default User-Agent, and the server you looked up is in the request path; nothing else is sent). With `SEALMARK_TELEMETRY=1` set, each command except `sealmark mcp` sends one ping when it finishes, and prints the exact JSON to stderr first:
 
 ```json
 {"schema":1,"sealmark":"1.0.1","command":"run","node":22,"os":"linux","ci":false}

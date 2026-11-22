@@ -27,6 +27,7 @@ import { failureRewriter, makeSecretScrubber, runRewriter } from "./report/redac
 import { inert, inertLines } from "./report/sanitize.js";
 import { oauthDebug, oauthDebugJson, parseDebugUrl, renderOauthDebug } from "./oauth-debug.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
+import { runGradeServer } from "./mcp-server.js";
 import { DataError, dataBase, installCheck, installCheckJson, lookupKeys, renderInstallCheck } from "./install-check.js";
 import { BADGE_VARIANTS, renderBadgeSnippets, selfReportedSnippets, siteBadgeSnippets, type BadgeVariant } from "./badge-snippet.js";
 import { FORMATS, FORMAT_EXT, isFailed, renderReport, startFailureLine, summaryLine, type AnyRun, type FailedRun, type ReportFormat, type RenderOptions } from "./report.js";
@@ -437,6 +438,18 @@ async function installCheckCommand(query: string | undefined, values: Record<str
   return { code: r.servers.length ? 0 : 3, stdout: values.json ? installCheckJson(r) : renderInstallCheck(r) };
 }
 
+/** `sealmark mcp`: a stdio MCP server for public grades (mcp-server.ts). Nothing but JSON-RPC goes to stdout; returns when stdin ends. */
+async function mcpCommand(values: Record<string, unknown>): Promise<CommandOutput> {
+  let base: string;
+  try {
+    base = dataBase(values["data-url"] as string | undefined);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+  await runGradeServer({ base });
+  return { code: 0 };
+}
+
 /** `sealmark oauth-debug <url>`: the OAuth flow step by step (oauth-debug.ts). Exit 4 when a step fails; grades nothing. */
 async function oauthDebugCommand(url: string | undefined, values: Record<string, unknown>): Promise<CommandOutput> {
   if (url === undefined || !url.trim()) throw new UsageError("oauth-debug needs the server's URL (sealmark oauth-debug https://mcp.example.com/mcp)");
@@ -470,7 +483,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
     }
     const { command, rest } = m;
     known = command.name;
-    pingCommand = command.name;
+    // `sealmark mcp` sends nothing but its GETs of the public results data, so it sends no usage ping either.
+    pingCommand = command.name === "mcp" ? undefined : command.name;
     const accepted = new Set(flagsFor(command.name).map((f) => f.name));
     if (command.name === "explain") accepted.add("json");
     for (const [key, v] of Object.entries(values)) {
@@ -542,6 +556,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return badgeCommand(values);
       case "install-check":
         return await installCheckCommand(rest[0], values);
+      case "mcp":
+        return await mcpCommand(values);
       case "oauth-debug":
         return await oauthDebugCommand(rest[0], values);
       case "share":
