@@ -20,7 +20,7 @@ import { inert, inertDeep, MAX_REPORT_FIELD } from "./report/sanitize.js";
 
 export const INSTALL_CHECK_FORMAT = "sealmark.install-check/1";
 export const DATA_URL = `${SITE_ORIGIN}/data/v1`;
-const TIMEOUT_MS = 10_000;
+export const TIMEOUT_MS = 10_000;
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_LISTED = 10;
 
@@ -303,6 +303,12 @@ export function parseLookup(v: unknown): LookupIndex {
   return { updated: str(v.updated), count: typeof v.count === "number" ? v.count : null, keys };
 }
 
+/** The page link is trusted only on sealmark.dev or the data's own origin; anything else is rebuilt from the id. */
+function trustedPage(page: string | null, id: string, base: string): string {
+  const ok = page !== null && /^https:\/\//.test(page) && [SITE_ORIGIN, originOf(base)].includes(originOf(page));
+  return ok ? page : `${SITE_ORIGIN}/results/${encodeURIComponent(id)}/`;
+}
+
 export function parseServer(v: unknown, id: string, base: string = DATA_URL): ServerDoc {
   if (!isObj(v) || v.id !== id) throw new DataError(`the file for ${id} does not describe ${id}`);
   const versionTested = str(v.versionTested);
@@ -320,8 +326,6 @@ export function parseServer(v: unknown, id: string, base: string = DATA_URL): Se
   const c = isObj(v.coverage) ? v.coverage : null;
   const cov = c && typeof c.level === "string" && typeof c.toolsCalledValid === "number" && typeof c.toolsTotal === "number" ? { level: c.level, toolsCalledValid: c.toolsCalledValid, toolsTotal: c.toolsTotal } : null;
   const toolCount = typeof v.toolCount === "number" ? v.toolCount : null;
-  // The page link is trusted only on sealmark.dev or the data's own origin; anything else is rebuilt from the id.
-  const pageOk = page !== null && /^https:\/\//.test(page) && [SITE_ORIGIN, originOf(base)].includes(originOf(page));
   return {
     id,
     name: str(v.name) ?? id,
@@ -333,7 +337,7 @@ export function parseServer(v: unknown, id: string, base: string = DATA_URL): Se
     areas,
     transport: str(v.transport),
     launch: str(v.launch),
-    page: pageOk ? page! : `${SITE_ORIGIN}/results/${encodeURIComponent(id)}/`,
+    page: trustedPage(page, id, base),
     sealmark: { version: str(sm.version), methodology: str(sm.methodology) },
     standard: typeof v.standard === "boolean" ? v.standard : null,
     noGradeReason: ng,
@@ -343,9 +347,54 @@ export function parseServer(v: unknown, id: string, base: string = DATA_URL): Se
   };
 }
 
+/** One line of `<base>/servers.json`, the fields `sealmark mcp`'s find_server passes on. Every string is still unsanitised data. */
+export interface ServerListing {
+  id: string;
+  name: string;
+  ecosystem: string | null;
+  versionTested: string | null;
+  testedAt: string | null;
+  grade: string | null;
+  provisional: boolean;
+  packs: Record<string, string>;
+  page: string;
+}
+
+const MAX_LISTING_PACKS = 40;
+
+/**
+ * `<base>/servers.json`: the index of every graded server. Defensive like parseServer: a non-object or a missing `servers` array is
+ * a DataError; an entry whose id is not a sealmark.dev id is skipped; only string fields are kept; the page link is trusted only on
+ * sealmark.dev or the data's own origin, else rebuilt from the id; a repeated id keeps its first entry.
+ */
+export function parseServers(v: unknown, base: string = DATA_URL): { updated: string | null; count: number | null; servers: ServerListing[] } {
+  if (!isObj(v) || !Array.isArray(v.servers)) throw new DataError("the server list has a shape this version does not know");
+  const servers: ServerListing[] = [];
+  const seen = new Set<string>();
+  for (const e of v.servers) {
+    if (!isObj(e) || typeof e.id !== "string" || !ID.test(e.id) || seen.has(e.id)) continue;
+    seen.add(e.id);
+    const page = str(e.page);
+    const packs = isObj(e.packs) ? Object.entries(e.packs).filter((kv): kv is [string, string] => typeof kv[1] === "string").slice(0, MAX_LISTING_PACKS) : [];
+    servers.push({
+      id: e.id,
+      name: str(e.name) ?? e.id,
+      ecosystem: str(e.ecosystem),
+      versionTested: str(e.versionTested),
+      testedAt: str(e.testedAt),
+      grade: str(e.grade),
+      provisional: e.provisional === true,
+      // fromEntries defines own properties, so a pack named `__proto__` is only ever a key.
+      packs: Object.fromEntries(packs),
+      page: trustedPage(page, e.id, base),
+    });
+  }
+  return { updated: str(v.updated), count: typeof v.count === "number" ? v.count : null, servers };
+}
+
 export type Fetcher = (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>;
 
-async function getJson(url: string, fetcher: Fetcher, timeoutMs: number): Promise<unknown> {
+export async function getJson(url: string, fetcher: Fetcher, timeoutMs: number): Promise<unknown> {
   const tooBig = () => new DataError(`${url} is larger than ${MAX_BYTES / 1024 / 1024} MiB`);
   let res: Response;
   try {
@@ -396,6 +445,7 @@ export function dataBase(value: string | undefined): string {
     throw new Error(`--data-url: "${inert(value, 200)}" is not a URL`);
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error(`--data-url takes an http or https URL, not ${inert(u.protocol, 20)}`);
+  if (u.username || u.password) throw new Error("--data-url takes an address with no user name or password (a base URL, not credentials)");
   if (u.search || u.hash) throw new Error("--data-url takes a base address with no ? or # part");
   return u.href.replace(/\/+$/, "");
 }
