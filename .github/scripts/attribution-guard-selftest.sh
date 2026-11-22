@@ -116,6 +116,23 @@ mkraw() { # trailer-line-with-a-0xff-byte -> sha
 H=$(mkraw "$AG: Hannah"); LC_ALL=C.UTF-8 run "push: $AG trailer line holding a non-UTF-8 byte (UTF-8 locale)" 1 push "$BASE" "$H"
 H=$(mkraw "$CS: abc"); LC_ALL=C.UTF-8 run "push: $CS trailer line holding a non-UTF-8 byte (UTF-8 locale)" 1 push "$BASE" "$H"
 
+echo "== convergence step 1: Signed-off-by naming an agent, and agent/ai/bot names next to _ or a digit =="
+msgcase "PR: Signed-off-by: hq-x" "x"$'\n\n'"Signed-off-by: hq-x <x@example.com>" 1
+msgcase "PR: Signed-off-by: Trinity Agent" "x"$'\n\n'"Signed-off-by: Trinity Agent <x@example.com>" 1
+msgcase "PR: Signed-off-by with a space before the colon" "x"$'\n\n'"Signed-off-by : Claude <x@example.com>" 1
+H=$(mk "x"$'\n\n'"Signed-off-by: Trinity Agent <x@example.com>" "$BASE"); run "push: Signed-off-by: Trinity Agent" 1 push "$BASE" "$H"
+H=$(mk "x"$'\n\n'"Signed-off-by: build agent <x@example.com>" "$BASE"); run "push: Signed-off-by: build agent" 1 push "$BASE" "$H"
+H=$(mk "x"$'\n\n'"Signed-off-by: Jordan Allen Lewis <$JE>" "$BASE"); run "push: Signed-off-by: Jordan (must pass)" 0 push "$BASE" "$H"
+for nm in build_agent agent2 Agent_Smith ci_bot ai_helper gpt_helper; do
+  H=$(mk "ok" "$BASE" "$nm" "$JE" "$JN" "$JE"); run "push: author name $nm" 1 push "$BASE" "$H"
+  H=$(mk "ok" "$BASE" "$JN" "$JE" "$nm" "$JE"); run "push: committer name $nm" 1 push "$BASE" "$H"
+  pr "PR by someone else: author name $nm" 1 "$(mk "ok" "$BASE" "$nm" "$JE" "$JN" "$JE")" "t" "b" someone
+done
+for nm in Agency "Reagent Smith" "Abbott Botha" "Sai Kumar" "Tai Mai"; do
+  H=$(mk "ok" "$BASE" "$nm" "$JE" "$nm" "$JE"); run "push: name $nm (must pass)" 0 push "$BASE" "$H"
+  pr "PR by someone else: author name $nm (must pass)" 0 "$(mk "ok" "$BASE" "$nm" "$JE" "$nm" "$JE")" "t" "b" someone
+done
+
 echo "== fail closed =="
 H=$(mk "x"$'\n\n'"$CS: abc" "$BASE")
 run "unreachable base, bad commit (was rc=0 before)" 2 pull_request deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$H"

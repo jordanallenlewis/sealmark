@@ -12,14 +12,15 @@ ZERO=0000000000000000000000000000000000000000
 JORDAN_NAME='Jordan Allen Lewis'
 JORDAN_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com)$'
 COMMITTER_OK_RE='^(42820601\+jordanallenlewis@users\.noreply\.github\.com|jordanallenlewis@gmail\.com|noreply@github\.com)$'
-TRAILER='^[[:space:]]*(Agent|Requested-by|Co-authored-by|Claude-Session|Generated-by)[[:space:]]*:'
+TRAILER='^[[:space:]]*(Agent|Requested-by|Co-authored-by|Claude-Session|Generated-by)[[:space:]]*:|^[[:space:]]*Signed-off-by[[:space:]]*:.*(claude|anthropic|agent|trinity|hq-)'
 OTHER='generated (with|by)[^a-z]{0,6}(claude|anthropic|chatgpt|codex|gemini|copilot)|signed-off-by[[:space:]]*:[[:space:]]*(claude|anthropic)|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
 EMOJI='🤖'
 # Pushed dependabot/renovate merges (GitHub web squash): bot author, committer noreply@github.com, and GitHub's own co-author line for the bot.
 BOT_AUTHOR_RE='^(49699333\+dependabot\[bot\]|29139614\+renovate\[bot\])@users\.noreply\.github\.com$'
 BOT_COAUTHOR_RE='^Co-authored-by: (dependabot\[bot\] <49699333\+dependabot\[bot\]@users\.noreply\.github\.com>|renovate\[bot\] <29139614\+renovate\[bot\]@users\.noreply\.github\.com>)$'
 IDENT='(@agent\.local|^hq-[a-z0-9_.-]*@|^trinity-agent@|\[bot\]@|noreply@anthropic\.com)'
-NAME_BAD='(claude|anthropic|\bagent\b|(^|[^a-z])hq-|trinity|codex|copilot|gemini|\bgpt|\bai\b|\bbot\b)'
+# agent/ai/bot/gpt are matched with (^|[^a-z])...([^a-z]|$), not \b: \b treats _ and digits as word characters (build_agent, agent2, ci_bot, ai_helper), but must not hit agency or reagent
+NAME_BAD='(claude|anthropic|(^|[^a-z])agent([^a-z]|$)|(^|[^a-z])hq-|trinity|codex|copilot|gemini|(^|[^a-z])gpt|(^|[^a-z])ai([^a-z]|$)|(^|[^a-z])bot([^a-z]|$))'
 fail=0
 bad() { echo "::error::attribution-guard: $1"; fail=1; }
 die() { echo "::error::attribution-guard: $1"; exit 2; }
@@ -28,7 +29,7 @@ die() { echo "::error::attribution-guard: $1"; exit 2; }
 scan() { # $1 label, stdin text
   local t
   t=$(cat)
-  grep -Eiq "$TRAILER" <<< "$t" && bad "$1 has an Agent:/Requested-by:/Co-authored-by:/Claude-Session:/Generated-by: line"
+  grep -Eiq "$TRAILER" <<< "$t" && bad "$1 has an Agent:/Requested-by:/Co-authored-by:/Claude-Session:/Generated-by: line or a Signed-off-by line naming an agent"
   grep -Eiq "$OTHER" <<< "$t" && bad "$1 credits an AI (Generated with/by Claude, Signed-off-by Claude, claude.ai/code link, noreply@anthropic.com)"
   grep -Fq "$EMOJI" <<< "$t" && bad "$1 carries the robot emoji used as AI credit"
   return 0
