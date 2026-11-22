@@ -25,6 +25,7 @@ import { sendPing } from "./telemetry.js";
 import { inCi } from "./config/index.js";
 import { failureRewriter, makeSecretScrubber, runRewriter } from "./report/redact.js";
 import { inert, inertLines } from "./report/sanitize.js";
+import { oauthDebug, oauthDebugJson, parseDebugUrl, renderOauthDebug } from "./oauth-debug.js";
 import { CI_PROVIDERS, ciSnippet, type CiDeclared, type CiProvider } from "./ci-snippet.js";
 import { DataError, dataBase, installCheck, installCheckJson, lookupKeys, renderInstallCheck } from "./install-check.js";
 import { BADGE_VARIANTS, renderBadgeSnippets, selfReportedSnippets, siteBadgeSnippets, type BadgeVariant } from "./badge-snippet.js";
@@ -436,6 +437,19 @@ async function installCheckCommand(query: string | undefined, values: Record<str
   return { code: r.servers.length ? 0 : 3, stdout: values.json ? installCheckJson(r) : renderInstallCheck(r) };
 }
 
+/** `sealmark oauth-debug <url>`: the OAuth flow step by step (oauth-debug.ts). Exit 4 when a step fails; grades nothing. */
+async function oauthDebugCommand(url: string | undefined, values: Record<string, unknown>): Promise<CommandOutput> {
+  if (url === undefined || !url.trim()) throw new UsageError("oauth-debug needs the server's URL (sealmark oauth-debug https://mcp.example.com/mcp)");
+  let target: string;
+  try {
+    target = parseDebugUrl(url);
+  } catch (e) {
+    throw new UsageError(`oauth-debug: ${(e as Error).message}`);
+  }
+  const r = await oauthDebug(target, { register: Boolean(values.register) });
+  return { code: r.failedAt ? 4 : 0, stdout: values.json ? oauthDebugJson(r) : renderOauthDebug(r) };
+}
+
 let pingCommand: string | undefined;
 
 async function main(argv: string[]): Promise<CommandOutput> {
@@ -528,6 +542,8 @@ async function main(argv: string[]): Promise<CommandOutput> {
         return badgeCommand(values);
       case "install-check":
         return await installCheckCommand(rest[0], values);
+      case "oauth-debug":
+        return await oauthDebugCommand(rest[0], values);
       case "share":
         return shareCommand(rest[0], { json: Boolean(values.json) });
       case "list-checks":
