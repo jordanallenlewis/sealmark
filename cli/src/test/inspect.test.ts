@@ -77,13 +77,14 @@ describe("inspect: against the toy file server", () => {
   });
 
   it("does not stop for a reader that closes stdout early, and leaves no sandbox directory behind", () => {
-    const before = new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("sealmark-")));
+    // This spawn gets its own TMPDIR: the sandbox and cwd directories land there, so a sibling test file creating
+    // sealmark-* entries in the shared os.tmpdir() at the same time (node --test runs files concurrently) cannot look like a leak.
+    const own = mkdtempSync(join(dir, "tmp-"));
     const input = `${Array.from({ length: 14 }, () => 'call list_dir {"path":"."}').join("\n")}\n`;
-    const r = spawnSync("sh", ["-c", `${q(process.execPath)} ${q(CLI)} inspect --config ${q(fsConfig("pipe.yaml"))} --json | head -c 50 >/dev/null`], { cwd: dir, encoding: "utf8", input, timeout: 120_000, env: hermeticEnv() });
+    const r = spawnSync("sh", ["-c", `${q(process.execPath)} ${q(CLI)} inspect --config ${q(fsConfig("pipe.yaml"))} --json | head -c 50 >/dev/null`], { cwd: dir, encoding: "utf8", input, timeout: 120_000, env: hermeticEnv({ TMPDIR: own }) });
     assert.equal(r.status, 0, r.stderr);
     assert.doesNotMatch(r.stderr, /EPIPE|unexpected error/);
-    const left = readdirSync(tmpdir()).filter((n) => n.startsWith("sealmark-") && !before.has(n) && !n.startsWith("sealmark-inspect-"));
-    assert.deepEqual(left, []);
+    assert.deepEqual(readdirSync(own), [], "anything left in the run's own TMPDIR is a leak");
   });
 
   it("lists the tools and, with --call, shows the reply and the file the tool wrote", () => {
