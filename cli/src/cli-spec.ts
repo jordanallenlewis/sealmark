@@ -51,7 +51,7 @@ export const EXIT_CODES: readonly ExitCode[] = [
   { code: 1, meaning: "a graded pack is below --fail-under (a provisional A* is below an A gate), an inconclusive pack under output.exit_policy.treat_inconclusive_as: fail, or a baseline comparison found a regression" },
   { code: 2, meaning: "usage or configuration error" },
   { code: 3, meaning: "no pack was graded (install-check: the server is not in the public results)" },
-  { code: 4, meaning: "harness or server failure (the server would not start, the database was unavailable, or doctor found a failing step; install-check: the public results data could not be read)" },
+  { code: 4, meaning: "harness or server failure (the server would not start, the database was unavailable, or doctor found a failing step; install-check: the public results data could not be read; oauth-debug: a step of the OAuth flow failed)" },
 ];
 
 /**
@@ -127,6 +127,13 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     args: [{ name: "server", required: true, description: "An npm or PyPI package name, a GitHub repository (owner/repo or URL), a sealmark.dev results URL or id, or a prefixed key (npm:, pypi:, github:, id:)." }],
   },
   {
+    name: "oauth-debug",
+    usage: "oauth-debug <url> [--register] [--json]",
+    summary:
+      "Walk the steps an MCP client takes to authorize against a remote HTTP server and say which one breaks: the 401 challenge, protected-resource metadata, authorization-server metadata, client registration, PKCE, the token endpoint and the refresh grant. Sends no token to the server and completes no authorization: the token endpoint is sent a made-up code (and a made-up refresh token when refresh is advertised), which it must refuse. Contacts only the origin of the URL given and that of the first authorization server its metadata names; redirects are reported, not followed. Grades nothing. Exit 4 when a step fails.",
+    args: [{ name: "url", required: true, description: "The server's Streamable HTTP endpoint, for example https://mcp.example.com/mcp." }],
+  },
+  {
     name: "share",
     usage: "share <report.json> [--json]",
     summary:
@@ -185,7 +192,7 @@ const META: CliFlag[] = [
   { name: "help", type: "boolean", short: "h", description: "Print usage and exit.", commands: ALL },
   { name: "version", type: "boolean", short: "v", description: "Print the sealmark version and exit.", commands: [] },
   { name: "force", type: "boolean", description: "Overwrite files that already exist.", commands: ["init", "config migrate"] },
-  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge", "install-check", "share"] },
+  { name: "json", type: "boolean", description: "Machine-readable output.", commands: ["doctor", "inspect", "describe", "diff", "explain", "list-checks", "config show", "config profiles", "init", "badge", "install-check", "share", "oauth-debug"] },
   { name: "probes", type: "boolean", description: "init: start the server like doctor does and write one valid call per tool as a probes: block (stdout, or the config file with --write). Never prompts.", commands: ["init"] },
   { name: "write", type: "boolean", description: "init --probes: append the block to the config file; exit 2 when it already has a probes: key.", commands: ["init"] },
   { name: "from", type: "string", metavar: "<command line>", description: 'Write a config from a one-liner, for example --from "npx -y @modelcontextprotocol/server-filesystem {sandbox}".', commands: ["init"] },
@@ -199,6 +206,7 @@ const META: CliFlag[] = [
   { name: "link", type: "string", metavar: "<url>", description: "badge --svg: an https URL the badge links to (for example your report or CI run).", commands: ["badge"] },
   { name: "data-url", type: "string", metavar: "<url>", description: "install-check: where to read the public results data from, a copy of https://sealmark.dev/data/v1 (the default).", commands: ["install-check"] },
   { name: "variant", type: "string", metavar: "<badge|card|shields>", description: "badge --id: the flat badge (default), the larger card, or the same badge drawn by shields.io.", commands: ["badge"] },
+  { name: "register", type: "boolean", description: "oauth-debug: send one test client registration (RFC 7591) to the advertised registration_endpoint. It creates a client on the authorization server; without it nothing is registered.", commands: ["oauth-debug"] },
   { name: "call", type: "string", metavar: "<tool>", description: "inspect: call this tool once, print the reply and what was observed, and stop (without it, commands are read from stdin).", commands: ["inspect"] },
   { name: "args", type: "string", metavar: "<json>", description: "inspect --call: the tool's arguments as a JSON object (default {}).", commands: ["inspect"] },
   { name: "replay", type: "string", metavar: "<report.json>", description: "Re-run with the locked settings of a previous JSON report, after verifying its config hash.", commands: ["run"] },

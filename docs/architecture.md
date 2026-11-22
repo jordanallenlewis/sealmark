@@ -261,7 +261,7 @@ Exit codes:
 | 1 | a graded pack is below `--fail-under` (a provisional `A*` is below an A gate), an inconclusive pack counts as failing (`output.exit_policy.treat_inconclusive_as: fail`, which the `ci` profile sets), or a pack regressed against a baseline |
 | 2 | usage or configuration error |
 | 3 | no pack was graded (`install-check`: the server is not in the public results) |
-| 4 | the harness or the server failed to run (`install-check`: the public results data could not be read) |
+| 4 | the harness or the server failed to run (`install-check`: the public results data could not be read; `oauth-debug`: a step of the OAuth flow failed) |
 | 129, 130, 143 | the run was stopped by SIGHUP, SIGINT or SIGTERM (128 plus the signal number), after cleanup. The last line on stderr is `sealmark exit 130: interrupted` (with the signal's own code; `stopped` instead of `interrupted` for SIGTERM and SIGHUP), even when the signal landed as the last pack finished, so the line printed and the code returned never disagree |
 
 With several servers the exit code is the worst of them. A gate cannot look green while a requested pack could not be judged.
@@ -442,6 +442,7 @@ These are by design or not yet built. Every report lists the relevant ones under
 | `cli/src/report/`, `cli/src/report.ts` | Renderers, sanitizing, redaction, baseline, exit codes |
 | `cli/src/badge-snippet.ts` | `sealmark badge`: README snippets (Markdown, HTML, reStructuredText) for a sealmark.dev badge or a committed self-reported one; text only, no network, reads no report |
 | `cli/src/install-check.ts` | `sealmark install-check`: reads sealmark.dev's public results data (lookup.json, then each named server's file), prints the grade and the install config the results page would show (the site's lookup-key and install-config rules, ported); starts, grades and writes nothing |
+| `cli/src/oauth-debug.ts` | `sealmark oauth-debug`: the OAuth steps an MCP client takes against a remote HTTP server (challenge, RFC 9728 metadata, RFC 8414 / OpenID discovery, registration, PKCE, token and refresh errors), each `ok`, `warn`, `fail` or `skipped` with its evidence; sends no token to the server, grades nothing. Reuses `bearerChallenge` and `wellKnownUrls` from the oauth pack and `canonicalResource` / `sameResource` from `oauth.ts` |
 | `cli/src/share.ts` | `sealmark share`: reads one JSON report, keeps what sealmark.dev/report/ shows (not the environment, sandbox paths, arguments or excerpts), and prints a link with `#r=` + base64url of the raw-deflated JSON. Reads one file, contacts nothing. The viewer is `web/lib/report-view.mjs` in sealmark-site; the two agree on the fragment and the size limit (`MAX_FRAGMENT`) |
 | `cli/src/inspect.ts` | `sealmark inspect`: starts one server in the sandbox like doctor, lists tools, makes the calls you type and reports the reply with the files, loopback-listener requests, processes and stderr the observers saw during each call; grades nothing |
 | `cli/src/toy/` | Deliberately good and bad toy servers that every check is tested against; `scoped-http.ts` is the round 6 fixture (a policy-heavy data server with 21 broken modes and 5 near misses, `test/r6-fixture.e2e.test.ts`) |
