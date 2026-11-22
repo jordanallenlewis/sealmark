@@ -107,6 +107,15 @@ H=$(mk "x"$'\n\n'"$CS: abc"$'\n\n'"$PAD" "$BASE"); run "push: trailer near the t
 pr "PR: trailer near the top of a ~300 KB message" 1 "$H"
 H=$(mk "ok"$'\n\n'"$PAD" "$BASE"); run "push: ~300 KB clean message" 0 push "$BASE" "$H"
 
+# GNU grep under a UTF-8 locale treats a line holding an invalid byte as non-matching, so the push-only strip of the bot
+# co-author line (grep -Ev) dropped such a line from the scanned text and a marker on it passed. The guard now uses grep -a.
+# git commit-tree re-encodes a stray byte, so these commits are written raw with an "encoding UTF-8" header, which makes git log emit the bytes untouched.
+mkraw() { # trailer-line-with-a-0xff-byte -> sha
+  printf 'tree %s\nparent %s\nauthor %s <%s> 1700000000 +0000\ncommitter %s <%s> 1700000000 +0000\nencoding UTF-8\n\nx\n\n%s \xff\n' "$TREE" "$BASE" "$JN" "$JE" "$JN" "$JE" "$1" | git hash-object -t commit -w --stdin
+}
+H=$(mkraw "$AG: Hannah"); LC_ALL=C.UTF-8 run "push: $AG trailer line holding a non-UTF-8 byte (UTF-8 locale)" 1 push "$BASE" "$H"
+H=$(mkraw "$CS: abc"); LC_ALL=C.UTF-8 run "push: $CS trailer line holding a non-UTF-8 byte (UTF-8 locale)" 1 push "$BASE" "$H"
+
 echo "== fail closed =="
 H=$(mk "x"$'\n\n'"$CS: abc" "$BASE")
 run "unreachable base, bad commit (was rc=0 before)" 2 pull_request deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$H"
