@@ -346,6 +346,9 @@ describe("install-check: reading the data", () => {
     assert.throws(() => dataBase("file:///etc"), /http or https/);
     assert.throws(() => dataBase("not a url"), /not a URL/);
     assert.throws(() => dataBase("https://x.test/data?x=1"), /no \? or #/);
+    assert.throws(() => dataBase("https://user:secret@x.test/data"), /no user name or password/);
+    assert.throws(() => dataBase("https://user@x.test/data"), /no user name or password/);
+    assert.throws(() => dataBase("https://:pw@x.test/data"), (e: Error) => /no user name or password/.test(e.message) && !e.message.includes("pw"));
   });
 
   it("age is counted in UTC days", () => {

@@ -127,6 +127,12 @@ export const CLI_COMMANDS: readonly CliCommand[] = [
     args: [{ name: "server", required: true, description: "An npm or PyPI package name, a GitHub repository (owner/repo or URL), a sealmark.dev results URL or id, or a prefixed key (npm:, pypi:, github:, id:)." }],
   },
   {
+    name: "mcp",
+    usage: "mcp [--data-url <url>]",
+    summary:
+      'Serve sealmark.dev\'s public grades to an AI agent as an MCP server on stdio, so it can check a server before installing it. Tools: get_grade (the grade, coverage and install config of one server, as install-check gives them), find_server (search the graded servers by name) and list_checks (the checks Sealmark runs, from this build, no network). Its only network traffic is HTTP GETs of the public results data (lookup.json, servers.json, and one file per server a name matches); it grades, starts and writes nothing, prints only JSON-RPC on stdout, and exits 0 when stdin closes. Add it to an MCP client as {"command": "npx", "args": ["-y", "sealmark", "mcp"]}.',
+  },
+  {
     name: "oauth-debug",
     usage: "oauth-debug <url> [--register] [--json]",
     summary:
@@ -204,7 +210,7 @@ const META: CliFlag[] = [
   { name: "id", type: "string", metavar: "<id>", description: "badge: the sealmark.dev server id, the last part of https://sealmark.dev/results/<id>/.", commands: ["badge"] },
   { name: "svg", type: "string", metavar: "<path|url>", description: "badge: where your committed self-reported badge SVG is, as a README would reference it (a relative path or an https URL).", commands: ["badge"] },
   { name: "link", type: "string", metavar: "<url>", description: "badge --svg: an https URL the badge links to (for example your report or CI run).", commands: ["badge"] },
-  { name: "data-url", type: "string", metavar: "<url>", description: "install-check: where to read the public results data from, a copy of https://sealmark.dev/data/v1 (the default).", commands: ["install-check"] },
+  { name: "data-url", type: "string", metavar: "<url>", description: "install-check and mcp: where to read the public results data from, a copy of https://sealmark.dev/data/v1 (the default).", commands: ["install-check", "mcp"] },
   { name: "variant", type: "string", metavar: "<badge|card|shields>", description: "badge --id: the flat badge (default), the larger card, or the same badge drawn by shields.io.", commands: ["badge"] },
   { name: "register", type: "boolean", description: "oauth-debug: send one test client registration (RFC 7591) to the advertised registration_endpoint. It creates a client on the authorization server; without it nothing is registered.", commands: ["oauth-debug"] },
   { name: "call", type: "string", metavar: "<tool>", description: "inspect: call this tool once, print the reply and what was observed, and stop (without it, commands are read from stdin).", commands: ["inspect"] },
