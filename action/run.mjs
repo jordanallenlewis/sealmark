@@ -2,10 +2,11 @@
 // The inputs arrive as SEALMARK_INPUT_<UPPER_SNAKE> (composite actions do not populate INPUT_*); an empty string means unset.
 // Secrets: bearer-env is the NAME of a variable. Only the literal "${NAME}" goes into argv (Sealmark expands it from
 // its own environment), so the token never appears in a command line or a log. This file never prints a value from process.env.
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { commentBody, findOwnComment, prNumber } from "./comment.mjs";
 
 const input = (name) => (process.env[`SEALMARK_INPUT_${name}`] ?? "").trim();
 
@@ -80,6 +81,13 @@ function badgeOn(get = input, extra = splitArgs(get("ARGS"))) {
   }
   if (named !== undefined) return named !== "" && named !== "all" && !named.includes(",");
   return !get("CONFIG");
+}
+
+/** comment input: "true" builds the PR comment (and posts it on a pull request event); empty or "false" does nothing. */
+function commentOn(get = input) {
+  const v = get("COMMENT").toLowerCase();
+  if (v !== "" && v !== "true" && v !== "false") throw new Error("comment: expected true or false");
+  return v === "true";
 }
 
 const SITE = "https://sealmark.dev";
@@ -171,10 +179,12 @@ function main() {
   let argv;
   let cmd;
   let badge;
+  let comment;
   try {
     argv = buildArgv();
     badgeId();
     badge = badgeOn();
+    comment = commentOn();
     argv.push("--format", badge ? "summary,json,junit,sarif,badge,shields" : "summary,json,junit,sarif", "--out-dir", reportDir);
     cmd = command(argv);
   } catch (e) {
@@ -185,16 +195,142 @@ function main() {
 
   // Sealmark reads every SEALMARK_* variable as a setting and refuses one it does not know, so the action's own
   // variables stay out of its environment. Any other SEALMARK_* setting the workflow sets still reaches it.
+  // That includes SEALMARK_INPUT_GITHUB_TOKEN: the token never reaches Sealmark or the server it starts.
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("SEALMARK_INPUT_") && k !== "SEALMARK_ACTION_BIN"));
   // Badge files left by an earlier run (a committed report directory, a reused self-hosted workspace) must never pass for this
   // run's badge: they are removed first, and only read back when this run asked for them.
   if (badge) for (const ext of ["badge.svg", "shields.json"]) rmSync(join(reportDir, `sealmark-report.${ext}`), { force: true });
+  // The same for the comment: an old JSON report must never be posted as this run's grades.
+  // A baseline that is the previous run's report in the same directory is kept: it is what this run is compared with.
+  if (comment) for (const ext of ["json", "comment.md"]) {
+    const old = join(reportDir, `sealmark-report.${ext}`);
+    try {
+      if (!(input("BASELINE") && resolve(input("BASELINE")) === old)) rmSync(old, { force: true });
+    } catch {
+      // A report directory that is not a directory: the CLI says so; the comment step warns later.
+    }
+  }
   const child = spawn(cmd.cmd, cmd.args, { stdio: "inherit", cwd: process.cwd(), env });
   child.on("error", (e) => exitWith(4, `sealmark action: could not start ${cmd.cmd}: ${e.code ?? e.message}`));
-  child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir, badge));
+  child.on("close", (status, signal) => {
+    finish(signal ? 4 : (status ?? 4), reportDir, badge, comment, env).catch((e) => exitWith(signal ? 4 : (status ?? 4), `sealmark action: ${e.message}`));
+  });
 }
 
-function finish(code, reportDir, badge) {
+/**
+ * `sealmark diff --json <baseline> <report>`, parsed. Undefined without a baseline; null (and a warning) when a baseline was
+ * set and the comparison could not be made, so the comment says so instead of looking like a run without a baseline.
+ */
+function baselineDiff(jsonPath, env) {
+  const baseline = input("BASELINE");
+  if (!baseline) return undefined;
+  if (!jsonPath) return null;
+  const cmd = command(["diff", baseline, jsonPath, "--json"]);
+  const r = spawnSync(cmd.cmd, cmd.args, { cwd: process.cwd(), env, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+  let d;
+  try {
+    d = JSON.parse(r.stdout);
+  } catch {
+    d = undefined;
+  }
+  if (d?.format === "sealmark.diff/1") return d;
+  warn(`comment: sealmark diff could not compare the baseline with this run (exit ${r.status ?? "none"}${r.error ? `, ${r.error.code ?? r.error.message}` : ""})`);
+  return null;
+}
+
+const warn = (message) => console.log(`::warning::sealmark action: ${message.replace(/[\r\n]+/g, " ")}`);
+
+/** GitHub REST call with the token; returns { status, json } and throws only when the API cannot be reached. */
+async function gh(method, path, token, body) {
+  const base = (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
+  const res = await fetch(`${base}${path}`, {
+    method,
+    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "sealmark-action", ...(body ? { "content-type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20_000),
+  });
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    json = undefined;
+  }
+  return { status: res.status, json };
+}
+
+/** Posts the body as the PR's Sealmark comment, or updates the action's earlier one. Returns its URL, or "" (with a log line why). */
+async function postComment(body, file) {
+  const event = process.env.GITHUB_EVENT_NAME ?? "";
+  if (event !== "pull_request" && event !== "pull_request_target") {
+    console.log(`sealmark action: comment: not a pull_request event (${event || "no event"}), nothing posted; the body is in ${file}`);
+    return "";
+  }
+  let number;
+  try {
+    number = prNumber(JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH ?? "", "utf8")));
+  } catch {
+    number = undefined;
+  }
+  const repo = process.env.GITHUB_REPOSITORY ?? "";
+  const token = input("GITHUB_TOKEN");
+  if (!number || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+    warn(`could not tell which pull request this is, so the comment was not posted; the body is in ${file}`);
+    return "";
+  }
+  if (!token) {
+    warn(`github-token is empty, so the comment was not posted; the body is in ${file}`);
+    return "";
+  }
+  const why = (status) =>
+    `could not post the PR comment (HTTP ${status}). The job needs permissions: pull-requests: write, and a pull request from a fork gets a read-only token. The body is in ${file}`;
+  try {
+    // A personal token knows its own login; the default GITHUB_TOKEN cannot read /user and writes as a bot.
+    const me = await gh("GET", "/user", token);
+    const login = me.status === 200 && typeof me.json?.login === "string" ? me.json.login : undefined;
+    let own;
+    for (let page = 1; page <= 10 && !own; page++) {
+      const list = await gh("GET", `/repos/${repo}/issues/${number}/comments?per_page=100&page=${page}`, token);
+      if (list.status !== 200 || !Array.isArray(list.json)) {
+        warn(why(list.status));
+        return "";
+      }
+      own = findOwnComment(list.json, login);
+      if (list.json.length < 100) break;
+    }
+    const r = own ? await gh("PATCH", `/repos/${repo}/issues/comments/${own.id}`, token, { body }) : await gh("POST", `/repos/${repo}/issues/${number}/comments`, token, { body });
+    if (r.status !== 200 && r.status !== 201) {
+      warn(why(r.status));
+      return "";
+    }
+    const url = typeof r.json?.html_url === "string" ? r.json.html_url.replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, "") : "";
+    console.log(`sealmark action: comment ${own ? "updated" : "posted"}${url ? `: ${url}` : ""}`);
+    return url;
+  } catch (e) {
+    warn(`could not post the PR comment (could not reach the API: ${e?.cause?.code ?? e?.name ?? "error"}). The body is in ${file}`);
+    return "";
+  }
+}
+
+/** Builds the comment from this run's report, writes it next to the reports and posts it on a pull request event. */
+async function writeAndPostComment(code, reportDir, file, path, env) {
+  let report;
+  try {
+    report = path("json") ? JSON.parse(readFileSync(file("json"), "utf8")) : undefined;
+  } catch {
+    report = undefined;
+  }
+  const server = process.env.GITHUB_SERVER_URL ?? "";
+  const runUrl = /^https?:\/\/[^\s()]+$/.test(server) && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(process.env.GITHUB_REPOSITORY ?? "") && /^\d+$/.test(process.env.GITHUB_RUN_ID ?? "")
+    ? `${server.replace(/\/+$/, "")}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    : "";
+  const body = commentBody({ report, exitCode: code, diff: baselineDiff(path("json"), env), runUrl, version: process.env.SEALMARK_ACTION_BIN ? "" : input("VERSION"), softFail: input("SOFT_FAIL").toLowerCase() === "true" });
+  const commentFile = file("comment.md");
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(commentFile, body);
+  return { commentFile, commentUrl: await postComment(body, commentFile) };
+}
+
+async function finish(code, reportDir, badge, comment, env) {
   const file = (ext) => join(reportDir, `sealmark-report.${ext}`);
   const path = (ext) => (existsSync(file(ext)) ? file(ext) : "");
   const badgePath = (ext) => (badge ? path(ext) : "");
@@ -219,6 +355,18 @@ function finish(code, reportDir, badge) {
       // An unreadable badge document leaves badge-text empty; it never changes the exit code.
     }
   }
+  // The PR comment: built from the report (and the baseline diff), written next to the reports, posted on a pull request event.
+  let commentFile = "";
+  let commentUrl = "";
+  // Nothing in it may cost the other outputs or the exit code: a failure is a warning.
+  if (comment) {
+    try {
+      ({ commentFile, commentUrl } = await writeAndPostComment(code, reportDir, file, path, env));
+    } catch (e) {
+      warn(`comment: ${e?.message ?? e}`);
+    }
+  }
+
   const id = input("BADGE_ID");
   const snippets = id ? siteSnippets(id) : { markdown: "", html: "", rst: "" };
 
@@ -235,6 +383,8 @@ function finish(code, reportDir, badge) {
     "badge-markdown": snippets.markdown,
     "badge-html": snippets.html,
     "badge-rst": snippets.rst,
+    "comment": commentFile,
+    "comment-url": commentUrl,
   };
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([k, v]) => outputLine(k, v)).join(""));
 

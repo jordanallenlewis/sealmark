@@ -54,6 +54,8 @@ All inputs are optional. A flag the CLI has a default for keeps that default whe
 | `artifact` | `true` | Keep the report directory as an artifact named `sealmark-report`. |
 | `badge` | `auto` | `auto` also writes the self-reported badge (`sealmark-report.badge.svg`, `sealmark-report.shields.json`) when the run grades one server: `start` or `url` without `config`, or `--server <name>` in `args`. `true` always asks for them (the CLI exits 2 for several servers); `false` never. See [Badge](#badge). |
 | `badge-id` | | A sealmark.dev server id (`https://sealmark.dev/results/<id>/`): fills the `badge-markdown`, `badge-html` and `badge-rst` outputs and the job summary with that badge. Nothing is fetched. |
+| `comment` | `false` | `true` writes a pull request comment to `sealmark-report.comment.md` and, on a `pull_request` event, posts it or updates the one this action posted before. See [PR comment](#pr-comment). |
+| `github-token` | `${{ github.token }}` | Token for the PR comment. It never reaches Sealmark or the server. |
 | `node-version` | `24` | Node version for `actions/setup-node`. Sealmark needs 22.13 or newer. |
 | `working-directory` | `.` | Directory to run in. |
 
@@ -75,6 +77,8 @@ The action always adds `--format summary,json,junit,sarif --out-dir <report-dir>
 | `badge-markdown` | With `badge-id`: the Markdown snippet for the sealmark.dev badge. Empty otherwise. |
 | `badge-html` | With `badge-id`: the HTML snippet. Empty otherwise. |
 | `badge-rst` | With `badge-id`: the reStructuredText snippet (three lines). Empty otherwise. |
+| `comment` | With `comment`: absolute path of the comment Markdown. Empty otherwise. |
+| `comment-url` | With `comment` on a pull request: the URL of the posted or updated comment. Empty when nothing was posted. |
 
 The one-line summary is also appended to the job summary page under `## Sealmark`, followed by a `### Badge` section when there is a badge to show.
 
@@ -97,6 +101,105 @@ Two different badges, never mixed:
 ```
 
 The `badge` and `badge-id` inputs are newer than the `v1.0.1` tag the examples pin: until a tag that includes them exists, pin a commit SHA of `main` to use them.
+
+## PR comment
+
+`comment: 'true'` puts the result on the pull request, so a reviewer sees it without opening the job:
+
+```yaml
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write   # for the comment
+
+jobs:
+  sealmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # pin to a commit SHA
+      - uses: jordanallenlewis/sealmark/action@v1.0.1
+        with:
+          start: npx -y my-mcp-server
+          comment: 'true'
+          upload-sarif: 'false'
+          baseline: sealmark-baseline.json   # optional: a JSON report committed from main
+```
+
+The comment holds a table of each server and its graded packs, what the exit code means, and with `baseline` a count and the lines of every regression, improvement, note and tool-surface change (what `sealmark diff --json <baseline> <this run>` says). It ends with a link to the job and says the grades are self-reported, from this job's own run, not the sealmark.dev fleet grade.
+
+- **One comment per pull request.** Its first line is `<!-- sealmark-action:comment -->`; a later run updates that comment in place. The action only edits a comment that starts with that line and was written by its own token (with the default token, a bot account such as `github-actions[bot]`); a person's comment that quotes the line is left alone.
+- **One comment per job step.** Two Sealmark steps with `comment: 'true'` on the same pull request (a matrix, or two servers in two steps) update the same comment and the last one wins. Grade several servers in one step with a `config` instead: the comment has a row for each.
+- **It never changes the exit code.** A token that may not comment (a pull request from a fork gets a read-only token, or `pull-requests: write` is missing) prints a warning and the job keeps Sealmark's own exit code. The body is always written to `sealmark-report.comment.md`, so a separate job with more rights can post it.
+- **Not on a pull request** (`push`, `schedule`): the body is written, nothing is posted.
+- **Server text stays inert.** Server, tool and check names come from the server under test. In the comment they only appear inside code, cut to one line, so they cannot mention anyone, add a link or an image, or break the table.
+- **Do not switch to `pull_request_target` to get a write token for forks.** It runs with the base repository's rights, and Sealmark would start the fork's server code with them.
+
+The `comment` input is newer than the `v1.0.1` tag the examples pin: until a tag that includes it exists, pin a commit SHA of `main` to use it.
+
+## Badge job
+
+A job you can copy into your own repository (for example `.github/workflows/sealmark-badge.yml`): it grades the server on every push to `main` and once a week, and keeps the self-reported badge on a branch of its own, so your README always shows the latest run.
+
+```yaml
+name: sealmark-badge
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # pushes the badge to the sealmark-badge branch
+
+concurrency: sealmark-badge
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # pin to a commit SHA
+      - uses: jordanallenlewis/sealmark/action@v1.0.1
+        id: sealmark
+        with:
+          start: npx -y my-mcp-server
+          badge: 'true'
+          fail-under: none          # publish whatever the grade is
+          upload-sarif: 'false'
+      - name: Publish the badge
+        if: steps.sealmark.outputs.badge != ''
+        env:
+          BADGE: ${{ steps.sealmark.outputs.badge }}
+          SHIELDS: ${{ steps.sealmark.outputs.shields }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          out="$(mktemp -d)"
+          cp "$BADGE" "$SHIELDS" "$out/"
+          if git fetch --depth=1 origin sealmark-badge; then git switch -c sealmark-badge FETCH_HEAD; else git switch --orphan sealmark-badge; fi
+          cp "$out"/* .
+          git add sealmark-report.badge.svg sealmark-report.shields.json
+          git diff --cached --quiet && exit 0   # the same badge as last time
+          git commit -q -m "sealmark badge"
+          git push origin sealmark-badge
+```
+
+Then, in the README (replace `OWNER/REPO`):
+
+```markdown
+![Sealmark](https://raw.githubusercontent.com/OWNER/REPO/sealmark-badge/sealmark-report.badge.svg)
+```
+
+or, through shields.io: `https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/sealmark-badge/sealmark-report.shields.json`.
+
+- `fail-under: none` keeps the job green whatever the letter, so the badge always says what the last run found, a bad grade included. Keep a separate gated job for pull requests.
+- The branch holds only the two badge files, one commit per change; nothing else belongs on it.
+- A run that is not badge-eligible (a custom configuration, a core-only result) gets the grey `no badge: <reason>` image. That is the honest result, not a failure of the job.
+- Keep `report-dir` a subdirectory (the default `sealmark-report`): report files at the top of the checkout would be in the way when the job switches to the badge branch.
+- `badge: 'true'` needs one server: `start` or `url`, or `--server <name>` in `args` with a `config`.
 
 ## Permissions
 
@@ -133,6 +236,7 @@ No network and no GitHub runner were available when this was written.
 
 - The `upload-sarif` step, the `security-events: write` permission and the private-repository requirement are as GitHub documents them, not tested here.
 - `codeql-action/upload-sarif@v3` and `upload-artifact@v4` are tags, not commit SHAs, because a SHA cannot be looked up offline and must not be invented. Pin both before relying on the action (an owner action: it needs network access to resolve the SHAs). `setup-node` uses the SHA the CLI workflow already uses.
+- The PR comment is tested against a stand-in for the GitHub REST API (`cli/src/test/action.comment.test.ts`), not on a real pull request, and the badge job above has not run on GitHub.
 - `run.mjs` is tested locally against the toy servers through `SEALMARK_ACTION_BIN` (the tests in `cli/src/test/action.test.ts`), not through `npx` and not on Windows (it calls npm's `npx-cli.js` there, since Node cannot spawn `npx.cmd` without a shell).
 - `--format summary` next to other formats prints to the console and writes no `sealmark-report.summary.txt`, so the job summary page holds the one-line grade, not the full text.
 - A Marketplace listing needs `action.yml` at the root of a separate public repository. This directory does not do that.

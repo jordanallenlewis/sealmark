@@ -61,6 +61,14 @@ inputs:
   badge-id:
     description: 'A sealmark.dev server id (https://sealmark.dev/results/<id>/). Fills the badge-markdown, badge-html and badge-rst outputs and the step summary with that badge. Nothing is fetched.'
     required: false
+  comment:
+    description: 'true writes a pull request comment (grades, what the exit code means and, with baseline, the regressions and tool-surface drift) to sealmark-report.comment.md and, on a pull_request event, posts it or updates the comment this action posted before. Needs pull-requests: write.'
+    required: false
+    default: 'false'
+  github-token:
+    description: 'Token for the PR comment. The default is the job token; it never reaches Sealmark or the server.'
+    required: false
+    default: '${{ github.token }}'
   node-version:
     description: 'Node version for actions/setup-node (Sealmark needs 22.13 or newer).'
     required: false
@@ -108,6 +116,12 @@ outputs:
   badge-rst:
     description: 'With badge-id: the reStructuredText snippet (three lines) for the sealmark.dev badge. Empty otherwise.'
     value: ${{ steps.run.outputs.badge-rst }}
+  comment:
+    description: 'With comment: absolute path of the comment Markdown. Empty otherwise.'
+    value: ${{ steps.run.outputs.comment }}
+  comment-url:
+    description: 'With comment on a pull request: the URL of the posted or updated comment. Empty when nothing was posted.'
+    value: ${{ steps.run.outputs.comment-url }}
 
 runs:
   using: composite
@@ -138,6 +152,8 @@ runs:
         SEALMARK_INPUT_ARTIFACT: ${{ inputs.artifact }}
         SEALMARK_INPUT_BADGE: ${{ inputs.badge }}
         SEALMARK_INPUT_BADGE_ID: ${{ inputs.badge-id }}
+        SEALMARK_INPUT_COMMENT: ${{ inputs.comment }}
+        SEALMARK_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         SEALMARK_INPUT_NODE_VERSION: ${{ inputs.node-version }}
         SEALMARK_INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: node "${{ github.action_path }}/run.mjs"

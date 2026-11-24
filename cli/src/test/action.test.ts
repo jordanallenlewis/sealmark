@@ -34,10 +34,10 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
   it("is composite and names the action", () => {
     assert.equal(action.runs.using, "composite");
     assert.ok(inputNames.length >= 17, "every input of the design is present");
-    for (const name of ["version", "start", "url", "config", "pack", "fail-under", "soft-fail", "baseline", "write-baseline", "fail-on", "bearer-env", "args", "report-dir", "upload-sarif", "artifact", "badge", "badge-id", "node-version", "working-directory"]) {
+    for (const name of ["version", "start", "url", "config", "pack", "fail-under", "soft-fail", "baseline", "write-baseline", "fail-on", "bearer-env", "args", "report-dir", "upload-sarif", "artifact", "badge", "badge-id", "comment", "github-token", "node-version", "working-directory"]) {
       assert.ok(inputNames.includes(name), `input ${name}`);
     }
-    for (const name of ["exit-code", "report-dir", "json", "sarif", "junit", "summary", "badge", "shields", "badge-text", "badge-markdown", "badge-html", "badge-rst"]) assert.ok(outputNames.includes(name), `output ${name}`);
+    for (const name of ["exit-code", "report-dir", "json", "sarif", "junit", "summary", "badge", "shields", "badge-text", "badge-markdown", "badge-html", "badge-rst", "comment", "comment-url"]) assert.ok(outputNames.includes(name), `output ${name}`);
   });
 
   it("every input is optional and has the documented default", () => {
@@ -50,6 +50,8 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
     assert.equal(action.inputs["working-directory"].default, ".");
     assert.equal(action.inputs.badge.default, "auto");
     assert.equal(action.inputs["badge-id"].default, undefined);
+    assert.equal(action.inputs.comment.default, "false", "the action never comments unless asked");
+    assert.equal(action.inputs["github-token"].default, "${{ github.token }}");
   });
 
   it("the version input defaults to the version in cli/package.json", () => {
