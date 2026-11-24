@@ -85,6 +85,11 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
 
   it("every output is a steps.run.outputs value the script writes", () => {
     for (const [name, def] of Object.entries(action.outputs)) {
+      // The comment URL comes from the comment step, the only step that holds the token.
+      if (name === "comment-url") {
+        assert.equal(def.value, "${{ steps.comment.outputs.url }}");
+        continue;
+      }
       assert.equal(def.value, `\${{ steps.run.outputs.${name} }}`);
       assert.ok(runSource.includes(name === "json" || name === "sarif" || name === "junit" || name === "summary" ? name : `"${name}"`), `run.mjs never writes ${name}`);
     }
@@ -108,10 +113,24 @@ describe("action.yml is a composite action whose inputs, outputs and README agre
     assert.equal(run["working-directory"], "${{ inputs.working-directory }}");
     assert.equal(run.run, 'node "${{ github.action_path }}/run.mjs"');
     const mapped = Object.keys(run.env).sort();
-    assert.deepEqual(mapped, inputNames.map((n) => `SEALMARK_INPUT_${n.toUpperCase().replaceAll("-", "_")}`).sort());
+    // Every input but the token: Sealmark and the server under test run in this step, so it never holds github-token.
+    assert.deepEqual(mapped, inputNames.filter((n) => n !== "github-token").map((n) => `SEALMARK_INPUT_${n.toUpperCase().replaceAll("-", "_")}`).sort());
+    assert.ok(!Object.values(run.env).some((v) => String(v).includes("github-token") || String(v).includes("github.token")), "no token in the run step");
     for (const [name, value] of Object.entries(run.env)) assert.match(String(value), /^\$\{\{ inputs\.[a-z-]+ \}\}$/, name);
     const read = new Set([...runSource.matchAll(/(?:input|get|one)\("([A-Z_]+)"|, "([A-Z_]+)"\)/g)].map((m) => `SEALMARK_INPUT_${m[1] ?? m[2]}`));
     for (const name of read) assert.ok(mapped.includes(name), `run.mjs reads ${name}, which action.yml does not map`);
+  });
+
+  it("only the comment step gets the token, only with comment, after the run step", () => {
+    const steps = action.runs.steps;
+    const at = steps.findIndex((s) => s.id === "comment");
+    assert.ok(at > steps.findIndex((s) => s.id === "run"), "the comment step comes after the run step");
+    const step = steps[at];
+    assert.equal(step.if, "always() && inputs.comment == 'true' && steps.run.outputs.comment != ''");
+    assert.deepEqual(step.env, { SEALMARK_INPUT_GITHUB_TOKEN: "${{ inputs.github-token }}", SEALMARK_COMMENT_FILE: "${{ steps.run.outputs.comment }}" });
+    assert.equal(step.run, 'node "${{ github.action_path }}/post-comment.mjs"');
+    const holders = steps.filter((s) => JSON.stringify(s).includes("inputs.github-token"));
+    assert.deepEqual(holders.map((s) => s.id), ["comment"], "no other step references the token");
   });
 
   it("the SARIF upload and the artifact still run after a failed run", () => {

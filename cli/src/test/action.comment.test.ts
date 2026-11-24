@@ -13,6 +13,7 @@ import { hermeticEnv } from "./helpers.js";
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const ACTION_DIR = join(ROOT, "action");
 const RUN_MJS = join(ACTION_DIR, "run.mjs");
+const POST_MJS = join(ACTION_DIR, "post-comment.mjs");
 const text = (path: string): string => readFileSync(path, "utf8");
 
 interface CommentModule {
@@ -160,7 +161,7 @@ describe("comment.mjs: finding the action's own comment and the PR number", () =
   });
 });
 
-describe("run.mjs comment: posts or updates one PR comment through the GitHub REST API", () => {
+describe("run.mjs writes the comment, post-comment.mjs posts or updates it through the GitHub REST API", () => {
   let dir: string;
   let server: Server;
   let api: string;
@@ -210,40 +211,69 @@ describe("run.mjs comment: posts or updates one PR comment through the GitHub RE
   }
   const binCalls = (name: string) => (existsSync(join(dir, `${name}.calls`)) ? text(join(dir, `${name}.calls`)).trim().split("\n").map((l) => JSON.parse(l) as { argv: string[]; tokenInEnv: boolean }) : []);
 
-  /** Runs run.mjs asynchronously (the stand-in API lives in this process), the way the composite step does. */
+  /** Runs one script asynchronously (the stand-in API lives in this process). */
+  async function node(script: string, cwd: string, env: NodeJS.ProcessEnv) {
+    const child = spawn(process.execPath, [script], { cwd, env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    const code = await new Promise<number | null>((ok) => child.on("close", ok));
+    return { code, stdout, stderr };
+  }
+  const readOutputs = (file: string): Record<string, string> => {
+    const outputs: Record<string, string> = {};
+    if (existsSync(file)) for (const line of text(file).split("\n")) if (/^[a-z-]+=/.test(line)) outputs[line.slice(0, line.indexOf("="))] = line.slice(line.indexOf("=") + 1);
+    return outputs;
+  };
+
+  /**
+   * The two steps the way action.yml runs them: the run step without the token, then, with comment true and a comment
+   * written, the comment step with only the token and the file (the step's own env plus the runner's GITHUB_* variables).
+   */
   async function act(name: string, env: Record<string, string>) {
     const work = join(dir, name);
     mkdirSync(work, { recursive: true });
     const eventFile = join(work, "event.json");
     writeFileSync(eventFile, JSON.stringify({ pull_request: { number: 7 } }));
     const outFile = join(work, "out");
-    const child = spawn(process.execPath, [RUN_MJS], {
-      cwd: work,
-      env: hermeticEnv({
+    const { SEALMARK_INPUT_GITHUB_TOKEN: token = TOKEN, ...rest } = env;
+    const runner = {
+      GITHUB_API_URL: api,
+      GITHUB_SERVER_URL: "https://github.com",
+      GITHUB_REPOSITORY: "o/r",
+      GITHUB_RUN_ID: "99",
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventFile,
+    };
+    const run = await node(
+      RUN_MJS,
+      work,
+      hermeticEnv({
         SEALMARK_ACTION_BIN: fakeBin(name),
         GITHUB_OUTPUT: outFile,
         GITHUB_STEP_SUMMARY: join(work, "sum"),
-        GITHUB_API_URL: api,
-        GITHUB_SERVER_URL: "https://github.com",
-        GITHUB_REPOSITORY: "o/r",
-        GITHUB_RUN_ID: "99",
-        GITHUB_EVENT_NAME: "pull_request",
-        GITHUB_EVENT_PATH: eventFile,
+        ...runner,
         SEALMARK_INPUT_URL: "http://127.0.0.1:1/mcp",
-        SEALMARK_INPUT_GITHUB_TOKEN: TOKEN,
         SEALMARK_FAKE_REPORT: JSON.stringify(report("files", { core: pack("B") })),
-        ...env,
+        ...rest,
       }),
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    const code = await new Promise<number | null>((ok) => child.on("close", ok));
-    const outputs: Record<string, string> = {};
-    if (existsSync(outFile)) for (const line of text(outFile).split("\n")) if (/^[a-z-]+=/.test(line)) outputs[line.slice(0, line.indexOf("="))] = line.slice(line.indexOf("=") + 1);
-    return { code, stdout, stderr, outputs, work };
+    );
+    const outputs = readOutputs(outFile);
+    let stdout = run.stdout;
+    let stderr = run.stderr;
+    // if: always() && inputs.comment == 'true' && steps.run.outputs.comment != ''
+    if ((env.SEALMARK_INPUT_COMMENT ?? "") === "true" && outputs.comment) {
+      const postOut = join(work, "post-out");
+      const post = await node(POST_MJS, work, hermeticEnv({ ...runner, ...pick(rest, ["GITHUB_API_URL", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"]), SEALMARK_INPUT_GITHUB_TOKEN: token, SEALMARK_COMMENT_FILE: outputs.comment, GITHUB_OUTPUT: postOut }));
+      assert.equal(post.code, 0, `the comment step never fails the job: ${post.stderr}`);
+      stdout += post.stdout;
+      stderr += post.stderr;
+      outputs["comment-url"] = readOutputs(postOut).url ?? "(no url line)";
+    } else outputs["comment-url"] = "";
+    return { code: run.code, stdout, stderr, outputs, work };
   }
+  const pick = (o: Record<string, string>, keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k)));
 
   it("no comment of its own yet: POSTs one with the token, writes the body to the report directory, keeps the CLI's exit code", async () => {
     calls = [];
@@ -304,6 +334,15 @@ describe("run.mjs comment: posts or updates one PR comment through the GitHub RE
     assert.ok(existsSync(r.outputs.comment));
     assert.equal(r.outputs["comment-url"], "");
     assert.match(r.stdout, /not a pull_request event/);
+  });
+
+  it("pull_request_target: writes the body, posts nothing", async () => {
+    calls = [];
+    const r = await act("target", { SEALMARK_INPUT_COMMENT: "true", GITHUB_EVENT_NAME: "pull_request_target" });
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(calls, []);
+    assert.ok(existsSync(r.outputs.comment));
+    assert.equal(r.outputs["comment-url"], "");
   });
 
   it("comment off (the default): no API call, no comment file, empty outputs", async () => {

@@ -62,11 +62,11 @@ inputs:
     description: 'A sealmark.dev server id (https://sealmark.dev/results/<id>/). Fills the badge-markdown, badge-html and badge-rst outputs and the step summary with that badge. Nothing is fetched.'
     required: false
   comment:
-    description: 'true writes a pull request comment (grades, what the exit code means and, with baseline, the regressions and tool-surface drift) to sealmark-report.comment.md and, on a pull_request event, posts it or updates the comment this action posted before. Needs pull-requests: write.'
+    description: 'true writes a pull request comment (grades, what the exit code means and, with baseline, the regressions and tool-surface drift) to sealmark-report.comment.md and, on a pull_request event, posts it or updates the comment this action posted before. Needs pull-requests: write. Never posts on pull_request_target.'
     required: false
     default: 'false'
   github-token:
-    description: 'Token for the PR comment. The default is the job token; it never reaches Sealmark or the server.'
+    description: 'Token for the PR comment. The default is the job token. Only the comment step gets it, after Sealmark and the server have exited.'
     required: false
     default: '${{ github.token }}'
   node-version:
@@ -121,7 +121,7 @@ outputs:
     value: ${{ steps.run.outputs.comment }}
   comment-url:
     description: 'With comment on a pull request: the URL of the posted or updated comment. Empty when nothing was posted.'
-    value: ${{ steps.run.outputs.comment-url }}
+    value: ${{ steps.comment.outputs.url }}
 
 runs:
   using: composite
@@ -153,10 +153,18 @@ runs:
         SEALMARK_INPUT_BADGE: ${{ inputs.badge }}
         SEALMARK_INPUT_BADGE_ID: ${{ inputs.badge-id }}
         SEALMARK_INPUT_COMMENT: ${{ inputs.comment }}
-        SEALMARK_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         SEALMARK_INPUT_NODE_VERSION: ${{ inputs.node-version }}
         SEALMARK_INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: node "${{ github.action_path }}/run.mjs"
+
+    # The only step that gets the token: it runs after Sealmark and the server under test have exited, and only with comment.
+    - id: comment
+      if: always() && inputs.comment == 'true' && steps.run.outputs.comment != ''
+      shell: bash
+      env:
+        SEALMARK_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        SEALMARK_COMMENT_FILE: ${{ steps.run.outputs.comment }}
+      run: node "${{ github.action_path }}/post-comment.mjs"
 
     # pin to a commit SHA before relying on this; no network was available to resolve one when this was written
     - uses: github/codeql-action/upload-sarif@v3

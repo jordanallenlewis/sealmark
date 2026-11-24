@@ -55,7 +55,7 @@ All inputs are optional. A flag the CLI has a default for keeps that default whe
 | `badge` | `auto` | `auto` also writes the self-reported badge (`sealmark-report.badge.svg`, `sealmark-report.shields.json`) when the run grades one server: `start` or `url` without `config`, or `--server <name>` in `args`. `true` always asks for them (the CLI exits 2 for several servers); `false` never. See [Badge](#badge). |
 | `badge-id` | | A sealmark.dev server id (`https://sealmark.dev/results/<id>/`): fills the `badge-markdown`, `badge-html` and `badge-rst` outputs and the job summary with that badge. Nothing is fetched. |
 | `comment` | `false` | `true` writes a pull request comment to `sealmark-report.comment.md` and, on a `pull_request` event, posts it or updates the one this action posted before. See [PR comment](#pr-comment). |
-| `github-token` | `${{ github.token }}` | Token for the PR comment. It never reaches Sealmark or the server. |
+| `github-token` | `${{ github.token }}` | Token for the PR comment. Only the comment step gets it, after Sealmark and the server have exited. |
 | `node-version` | `24` | Node version for `actions/setup-node`. Sealmark needs 22.13 or newer. |
 | `working-directory` | `.` | Directory to run in. |
 
@@ -132,8 +132,9 @@ The comment holds a table of each server and its graded packs, what the exit cod
 - **One comment per job step.** Two Sealmark steps with `comment: 'true'` on the same pull request (a matrix, or two servers in two steps) update the same comment and the last one wins. Grade several servers in one step with a `config` instead: the comment has a row for each.
 - **It never changes the exit code.** A token that may not comment (a pull request from a fork gets a read-only token, or `pull-requests: write` is missing) prints a warning and the job keeps Sealmark's own exit code. The body is always written to `sealmark-report.comment.md`, so a separate job with more rights can post it.
 - **Not on a pull request** (`push`, `schedule`): the body is written, nothing is posted.
+- **The token never meets the server.** Sealmark and the server under test run in a step without it. A separate step, which runs only with `comment: 'true'` and after they have exited, gets `github-token` and posts the file.
 - **Server text stays inert.** Server, tool and check names come from the server under test. In the comment they only appear inside code, cut to one line, so they cannot mention anyone, add a link or an image, or break the table.
-- **Do not switch to `pull_request_target` to get a write token for forks.** It runs with the base repository's rights, and Sealmark would start the fork's server code with them.
+- **Never on `pull_request_target`.** It runs with the base repository's rights, and grading a fork's server code there would hand them to it; the action writes the body and posts nothing on that event. For forks, post the file from a separate `workflow_run` job that does not run the fork's code.
 
 The `comment` input is newer than the `v1.0.1` tag the examples pin: until a tag that includes it exists, pin a commit SHA of `main` to use it.
 
