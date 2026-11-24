@@ -4,7 +4,8 @@
 // its own environment), so the token never appears in a command line or a log. This file never prints a value from process.env.
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { commentBody } from "./comment.mjs";
 
@@ -209,9 +210,28 @@ function main() {
       // A report directory that is not a directory: the CLI says so; the comment step warns later.
     }
   }
+  // The baseline is copied before the CLI runs: a baseline that is this run's own report path (the report directory's
+  // sealmark-report.json) or the write-baseline path is rewritten by the CLI, and the diff must compare against the old content.
+  if (comment) snapshotBaseline();
   const child = spawn(cmd.cmd, cmd.args, { stdio: "inherit", cwd: process.cwd(), env });
   child.on("error", (e) => exitWith(4, `sealmark action: could not start ${cmd.cmd}: ${e.code ?? e.message}`));
   child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir, badge, comment, env));
+}
+
+/** The baseline as it was before the CLI ran; "" when there is none or it could not be copied (the diff then says so). */
+let baselineSnapshot = "";
+let snapshotDir = "";
+
+function snapshotBaseline() {
+  const baseline = input("BASELINE");
+  if (!baseline) return;
+  try {
+    snapshotDir = mkdtempSync(join(tmpdir(), "sealmark-baseline-"));
+    baselineSnapshot = join(snapshotDir, "baseline.json");
+    copyFileSync(resolve(baseline), baselineSnapshot);
+  } catch {
+    baselineSnapshot = "";
+  }
 }
 
 /**
@@ -221,8 +241,8 @@ function main() {
 function baselineDiff(jsonPath, env) {
   const baseline = input("BASELINE");
   if (!baseline) return undefined;
-  if (!jsonPath) return null;
-  const cmd = command(["diff", baseline, jsonPath, "--json"]);
+  if (!jsonPath || !baselineSnapshot) return null;
+  const cmd = command(["diff", baselineSnapshot, jsonPath, "--json"]);
   const r = spawnSync(cmd.cmd, cmd.args, { cwd: process.cwd(), env, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
   let d;
   try {
@@ -249,7 +269,13 @@ function writeComment(code, reportDir, file, path, env) {
   const runUrl = /^https?:\/\/[^\s()]+$/.test(server) && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(process.env.GITHUB_REPOSITORY ?? "") && /^\d+$/.test(process.env.GITHUB_RUN_ID ?? "")
     ? `${server.replace(/\/+$/, "")}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
     : "";
-  const body = commentBody({ report, exitCode: code, diff: baselineDiff(path("json"), env), runUrl, version: process.env.SEALMARK_ACTION_BIN ? "" : input("VERSION"), softFail: input("SOFT_FAIL").toLowerCase() === "true" });
+  let diff;
+  try {
+    diff = baselineDiff(path("json"), env);
+  } finally {
+    if (snapshotDir) rmSync(snapshotDir, { recursive: true, force: true });
+  }
+  const body = commentBody({ report, exitCode: code, diff, runUrl, version: process.env.SEALMARK_ACTION_BIN ? "" : input("VERSION"), softFail: input("SOFT_FAIL").toLowerCase() === "true" });
   const commentFile = file("comment.md");
   mkdirSync(reportDir, { recursive: true });
   writeFileSync(commentFile, body);

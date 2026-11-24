@@ -209,14 +209,21 @@ describe("run.mjs writes the comment, post-comment.mjs posts or updates it throu
     writeFileSync(
       bin,
       [
-        `import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";`,
+        `import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";`,
         `import { join } from "node:path";`,
         `const argv = process.argv.slice(2);`,
         `appendFileSync(${JSON.stringify(join(dir, `${name}.calls`))}, JSON.stringify({ argv, tokenInEnv: Object.values(process.env).some((v) => String(v).includes(${JSON.stringify(TOKEN)})) }) + "\\n");`,
-        `if (argv[0] === "diff") { process.stdout.write(process.env.SEALMARK_FAKE_DIFF ?? ""); process.exit(1); }`,
+        `if (argv[0] === "diff") {`,
+        `  if (process.env.SEALMARK_FAKE_DIFF_BY_CONTENT) {`,
+        `    const same = readFileSync(argv[1], "utf8") === readFileSync(argv[2], "utf8");`,
+        `    process.stdout.write(JSON.stringify({ format: "sealmark.diff/1", regressions: same ? [] : [{ text: "files core: letter A -> B" }], improvements: [], notes: [], drift: [] }));`,
+        `  } else process.stdout.write(process.env.SEALMARK_FAKE_DIFF ?? "");`,
+        `  process.exit(1);`,
+        `}`,
         `const dir = argv[argv.indexOf("--out-dir") + 1];`,
         `try { mkdirSync(dir, { recursive: true }); } catch {}`,
         `if (process.env.SEALMARK_FAKE_REPORT) writeFileSync(join(dir, "sealmark-report.json"), process.env.SEALMARK_FAKE_REPORT);`,
+        `if (process.env.SEALMARK_FAKE_REWRITE && process.env.SEALMARK_FAKE_REPORT) writeFileSync(process.env.SEALMARK_FAKE_REWRITE, process.env.SEALMARK_FAKE_REPORT);`,
         `process.exit(Number(process.env.SEALMARK_FAKE_EXIT ?? 0));`,
       ].join("\n"),
     );
@@ -368,14 +375,42 @@ describe("run.mjs writes the comment, post-comment.mjs posts or updates it throu
     assert.ok(!existsSync(join(r.work, "sealmark-report", "sealmark-report.comment.md")));
   });
 
+  /** An earlier run's report (grade A) at a path under the work directory, as a committed baseline would be. */
+  function seedBaseline(name: string, rel: string) {
+    const file = join(dir, name, rel);
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, JSON.stringify(report("files", { core: pack("A") })));
+  }
+
+  it("a baseline the CLI rewrites during the run (the report directory's own report, or write-baseline) still compares against the old content", async () => {
+    calls = [];
+    reply = (method, url) => (method === "POST" ? { status: 201, json: { id: 1, html_url: "https://github.com/o/r/pull/7#issuecomment-1" } } : url === "/user" ? { status: 403, json: {} } : { status: 200, json: [] });
+    // Case A: the baseline is the report directory's sealmark-report.json, which the CLI overwrites with this run's report.
+    seedBaseline("rewriteA", "sealmark-report/sealmark-report.json");
+    const a = await act("rewriteA", { SEALMARK_INPUT_COMMENT: "true", SEALMARK_INPUT_BASELINE: "sealmark-report/sealmark-report.json", SEALMARK_FAKE_DIFF_BY_CONTENT: "1", SEALMARK_FAKE_EXIT: "1" });
+    assert.match(text(a.outputs.comment), /1 regression/, `case A: ${text(a.outputs.comment)}`);
+    assert.doesNotMatch(text(a.outputs.comment), /no regression and no tool-surface change/);
+    // Case B: baseline == write-baseline, which the CLI rewrites when the gate passes.
+    seedBaseline("rewriteB", "base.json");
+    const b = await act("rewriteB", { SEALMARK_INPUT_COMMENT: "true", SEALMARK_INPUT_BASELINE: "base.json", SEALMARK_FAKE_REWRITE: join(dir, "rewriteB", "base.json"), SEALMARK_FAKE_DIFF_BY_CONTENT: "1", SEALMARK_FAKE_EXIT: "0" });
+    assert.notEqual(text(join(dir, "rewriteB", "base.json")), JSON.stringify(report("files", { core: pack("A") })), "the fake CLI did rewrite the baseline");
+    assert.match(text(b.outputs.comment), /1 regression/, `case B: ${text(b.outputs.comment)}`);
+    // A baseline that cannot be read says so instead of comparing the run with itself.
+    const missing = await act("rewriteC", { SEALMARK_INPUT_COMMENT: "true", SEALMARK_INPUT_BASELINE: "nope.json", SEALMARK_FAKE_DIFF_BY_CONTENT: "1" });
+    assert.match(text(missing.outputs.comment), /the comparison could not be made/);
+  });
+
   it("with a baseline: the comment carries what sealmark diff --json says about baseline and this run", async () => {
     calls = [];
     reply = (method, url) => (method === "POST" ? { status: 201, json: { id: 1, html_url: "https://github.com/o/r/pull/7#issuecomment-1" } } : url === "/user" ? { status: 403, json: {} } : { status: 200, json: [] });
     const diff = { format: "sealmark.diff/1", regressions: [{ text: "files core: letter A -> B" }], improvements: [], notes: [], drift: [{ severity: "notable", text: "files: tool added: rm" }] };
+    seedBaseline("baseline", "base.json");
     const r = await act("baseline", { SEALMARK_INPUT_COMMENT: "true", SEALMARK_INPUT_BASELINE: "base.json", SEALMARK_FAKE_DIFF: JSON.stringify(diff), SEALMARK_FAKE_EXIT: "1" });
     assert.equal(r.code, 1, r.stderr);
     const diffCall = binCalls("baseline").find((c) => c.argv[0] === "diff");
-    assert.deepEqual(diffCall?.argv, ["diff", "base.json", join(r.work, "sealmark-report", "sealmark-report.json"), "--json"]);
+    assert.equal(diffCall?.argv[0], "diff");
+    assert.notEqual(diffCall?.argv[1], "base.json", "the diff reads the copy taken before the run");
+    assert.deepEqual(diffCall?.argv.slice(2), [join(r.work, "sealmark-report", "sealmark-report.json"), "--json"]);
     const body = text(r.outputs.comment);
     assert.match(body, /1 regression, 0 improvements, 1 tool-surface change \(0 breaking, 1 notable, 0 info\)/);
     assert.match(body, /regression: files core: letter A -> B\ndrift \(notable\): files: tool added: rm/);
@@ -396,6 +431,7 @@ describe("run.mjs writes the comment, post-comment.mjs posts or updates it throu
   it("a diff that fails: the comment says the comparison could not be made, and the token stays out of the diff too", async () => {
     calls = [];
     reply = (method, url) => (method === "POST" ? { status: 201, json: { id: 1, html_url: "https://github.com/o/r/pull/7#issuecomment-1" } } : url === "/user" ? { status: 403, json: {} } : { status: 200, json: [] });
+    seedBaseline("baddiff", "base.json");
     const r = await act("baddiff", { SEALMARK_INPUT_COMMENT: "true", SEALMARK_INPUT_BASELINE: "base.json", SEALMARK_FAKE_DIFF: "not json" });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /::warning::sealmark action: comment: sealmark diff could not compare/);

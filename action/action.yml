@@ -158,6 +158,7 @@ runs:
       run: node "${{ github.action_path }}/run.mjs"
 
     # The only step that gets the token: it runs after Sealmark and the server under test have exited, and only with comment.
+    # A process the server left behind could still read it; see the README (PR comment) for running the comment in a separate job.
     - id: comment
       if: always() && inputs.comment == 'true' && steps.run.outputs.comment != ''
       shell: bash

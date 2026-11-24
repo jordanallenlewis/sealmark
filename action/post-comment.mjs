@@ -1,6 +1,7 @@
 // The action's comment step: posts the comment run.mjs wrote, or updates the one this action posted before. It runs after
-// Sealmark and the server under test have exited, and it is the only step that gets the token (SEALMARK_INPUT_GITHUB_TOKEN),
-// so no server process can read it from its environment. It never fails the job: every problem is a warning.
+// Sealmark and the server under test have exited, and it is the only step that gets the token (SEALMARK_INPUT_GITHUB_TOKEN).
+// A server that left a process behind (new session, working directory outside the sandbox) could still read it: for a server
+// you do not trust, run this step in a separate job. It never fails the job: every problem is a warning.
 // Plain Node, no dependencies, Node >= 22. It never prints the token or any other value from process.env.
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { findOwnComment, prNumber } from "./comment.mjs";
