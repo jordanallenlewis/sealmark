@@ -2,10 +2,12 @@
 // The inputs arrive as SEALMARK_INPUT_<UPPER_SNAKE> (composite actions do not populate INPUT_*); an empty string means unset.
 // Secrets: bearer-env is the NAME of a variable. Only the literal "${NAME}" goes into argv (Sealmark expands it from
 // its own environment), so the token never appears in a command line or a log. This file never prints a value from process.env.
-import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { commentBody } from "./comment.mjs";
 
 const input = (name) => (process.env[`SEALMARK_INPUT_${name}`] ?? "").trim();
 
@@ -80,6 +82,13 @@ function badgeOn(get = input, extra = splitArgs(get("ARGS"))) {
   }
   if (named !== undefined) return named !== "" && named !== "all" && !named.includes(",");
   return !get("CONFIG");
+}
+
+/** comment input: "true" builds the PR comment (and posts it on a pull request event); empty or "false" does nothing. */
+function commentOn(get = input) {
+  const v = get("COMMENT").toLowerCase();
+  if (v !== "" && v !== "true" && v !== "false") throw new Error("comment: expected true or false");
+  return v === "true";
 }
 
 const SITE = "https://sealmark.dev";
@@ -171,10 +180,12 @@ function main() {
   let argv;
   let cmd;
   let badge;
+  let comment;
   try {
     argv = buildArgv();
     badgeId();
     badge = badgeOn();
+    comment = commentOn();
     argv.push("--format", badge ? "summary,json,junit,sarif,badge,shields" : "summary,json,junit,sarif", "--out-dir", reportDir);
     cmd = command(argv);
   } catch (e) {
@@ -189,12 +200,89 @@ function main() {
   // Badge files left by an earlier run (a committed report directory, a reused self-hosted workspace) must never pass for this
   // run's badge: they are removed first, and only read back when this run asked for them.
   if (badge) for (const ext of ["badge.svg", "shields.json"]) rmSync(join(reportDir, `sealmark-report.${ext}`), { force: true });
+  // The same for the comment: an old JSON report must never be posted as this run's grades.
+  // A baseline that is the previous run's report in the same directory is kept: it is what this run is compared with.
+  if (comment) for (const ext of ["json", "comment.md"]) {
+    const old = join(reportDir, `sealmark-report.${ext}`);
+    try {
+      if (!(input("BASELINE") && resolve(input("BASELINE")) === old)) rmSync(old, { force: true });
+    } catch {
+      // A report directory that is not a directory: the CLI says so; the comment step warns later.
+    }
+  }
+  // The baseline is copied before the CLI runs: a baseline that is this run's own report path (the report directory's
+  // sealmark-report.json) or the write-baseline path is rewritten by the CLI, and the diff must compare against the old content.
+  if (comment) snapshotBaseline();
   const child = spawn(cmd.cmd, cmd.args, { stdio: "inherit", cwd: process.cwd(), env });
   child.on("error", (e) => exitWith(4, `sealmark action: could not start ${cmd.cmd}: ${e.code ?? e.message}`));
-  child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir, badge));
+  child.on("close", (status, signal) => finish(signal ? 4 : (status ?? 4), reportDir, badge, comment, env));
 }
 
-function finish(code, reportDir, badge) {
+/** The baseline as it was before the CLI ran; "" when there is none or it could not be copied (the diff then says so). */
+let baselineSnapshot = "";
+let snapshotDir = "";
+
+function snapshotBaseline() {
+  const baseline = input("BASELINE");
+  if (!baseline) return;
+  try {
+    snapshotDir = mkdtempSync(join(tmpdir(), "sealmark-baseline-"));
+    baselineSnapshot = join(snapshotDir, "baseline.json");
+    copyFileSync(resolve(baseline), baselineSnapshot);
+  } catch {
+    baselineSnapshot = "";
+  }
+}
+
+/**
+ * `sealmark diff --json <baseline> <report>`, parsed. Undefined without a baseline; null (and a warning) when a baseline was
+ * set and the comparison could not be made, so the comment says so instead of looking like a run without a baseline.
+ */
+function baselineDiff(jsonPath, env) {
+  const baseline = input("BASELINE");
+  if (!baseline) return undefined;
+  if (!jsonPath || !baselineSnapshot) return null;
+  const cmd = command(["diff", baselineSnapshot, jsonPath, "--json"]);
+  const r = spawnSync(cmd.cmd, cmd.args, { cwd: process.cwd(), env, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 });
+  let d;
+  try {
+    d = JSON.parse(r.stdout);
+  } catch {
+    d = undefined;
+  }
+  if (d?.format === "sealmark.diff/1") return d;
+  warn(`comment: sealmark diff could not compare the baseline with this run (exit ${r.status ?? "none"}${r.error ? `, ${r.error.code ?? r.error.message}` : ""})`);
+  return null;
+}
+
+const warn = (message) => console.log(`::warning::sealmark action: ${message.replace(/[\r\n]+/g, " ")}`);
+
+/** Builds the comment from this run's report and writes it next to the reports; the action's comment step posts it. */
+function writeComment(code, reportDir, file, path, env) {
+  let report;
+  try {
+    report = path("json") ? JSON.parse(readFileSync(file("json"), "utf8")) : undefined;
+  } catch {
+    report = undefined;
+  }
+  const server = process.env.GITHUB_SERVER_URL ?? "";
+  const runUrl = /^https?:\/\/[^\s()]+$/.test(server) && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(process.env.GITHUB_REPOSITORY ?? "") && /^\d+$/.test(process.env.GITHUB_RUN_ID ?? "")
+    ? `${server.replace(/\/+$/, "")}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    : "";
+  let diff;
+  try {
+    diff = baselineDiff(path("json"), env);
+  } finally {
+    if (snapshotDir) rmSync(snapshotDir, { recursive: true, force: true });
+  }
+  const body = commentBody({ report, exitCode: code, diff, runUrl, version: process.env.SEALMARK_ACTION_BIN ? "" : input("VERSION"), softFail: input("SOFT_FAIL").toLowerCase() === "true" });
+  const commentFile = file("comment.md");
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(commentFile, body);
+  return commentFile;
+}
+
+function finish(code, reportDir, badge, comment, env) {
   const file = (ext) => join(reportDir, `sealmark-report.${ext}`);
   const path = (ext) => (existsSync(file(ext)) ? file(ext) : "");
   const badgePath = (ext) => (badge ? path(ext) : "");
@@ -219,6 +307,18 @@ function finish(code, reportDir, badge) {
       // An unreadable badge document leaves badge-text empty; it never changes the exit code.
     }
   }
+  // The PR comment: built from the report (and the baseline diff) and written next to the reports. It is posted by the
+  // action's next step (post-comment.mjs), the only one that gets the token, after Sealmark and the server have exited.
+  // Nothing in it may cost the other outputs or the exit code: a failure is a warning.
+  let commentFile = "";
+  if (comment) {
+    try {
+      commentFile = writeComment(code, reportDir, file, path, env);
+    } catch (e) {
+      warn(`comment: ${e?.message ?? e}`);
+    }
+  }
+
   const id = input("BADGE_ID");
   const snippets = id ? siteSnippets(id) : { markdown: "", html: "", rst: "" };
 
@@ -235,6 +335,7 @@ function finish(code, reportDir, badge) {
     "badge-markdown": snippets.markdown,
     "badge-html": snippets.html,
     "badge-rst": snippets.rst,
+    "comment": commentFile,
   };
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([k, v]) => outputLine(k, v)).join(""));
 
