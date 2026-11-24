@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parse } from "yaml";
 import { hermeticEnv } from "./helpers.js";
 
 // Run from dist/test, so the repository root is three levels up.
@@ -130,9 +131,21 @@ describe("action/README.md documents the PR comment and the badge job", () => {
     assert.match(s, /never changes the exit code/);
     assert.match(s, /pull_request_target/);
     assert.match(s, /self-reported/);
+    assert.match(s, /persist-credentials: false/, "the example keeps the token out of .git/config while the server runs");
   });
-  it("Badge job: publishes every grade to its own branch with a plain push", () => {
+  it("Badge job: the job that runs the server cannot write; the job that pushes runs no server", () => {
     const s = section("Badge job");
+    const yaml = s.split("```yaml\n")[1]?.split("\n```")[0] ?? "";
+    const wf = parse(yaml) as { permissions: Record<string, string>; jobs: Record<string, { permissions?: Record<string, string>; steps: { uses?: string; with?: Record<string, string> }[] }> };
+    assert.deepEqual(wf.permissions, { contents: "read" });
+    const runsServer = Object.entries(wf.jobs).filter(([, j]) => j.steps.some((st) => /sealmark\/action@/.test(st.uses ?? "")));
+    assert.equal(runsServer.length, 1);
+    const [[gradeName, grade]] = runsServer;
+    assert.equal(grade.permissions, undefined, "the grading job keeps the workflow's contents: read");
+    assert.equal(grade.steps.find((st) => /actions\/checkout@/.test(st.uses ?? ""))?.with?.["persist-credentials"], false);
+    const writers = Object.entries(wf.jobs).filter(([, j]) => j.permissions?.contents === "write");
+    assert.deepEqual(writers.map(([n]) => n), ["publish"]);
+    assert.notEqual(gradeName, "publish");
     assert.match(s, /contents: write/);
     assert.match(s, /badge: 'true'/);
     assert.match(s, /fail-under: none/);

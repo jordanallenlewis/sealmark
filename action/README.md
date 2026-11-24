@@ -118,6 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4   # pin to a commit SHA
+        with:
+          persist-credentials: false   # keeps the token out of .git/config, where the server could read it
       - uses: jordanallenlewis/sealmark/action@v1.0.1
         with:
           start: npx -y my-mcp-server
@@ -132,7 +134,7 @@ The comment holds a table of each server and its graded packs, what the exit cod
 - **One comment per job step.** Two Sealmark steps with `comment: 'true'` on the same pull request (a matrix, or two servers in two steps) update the same comment and the last one wins. Grade several servers in one step with a `config` instead: the comment has a row for each.
 - **It never changes the exit code.** A token that may not comment (a pull request from a fork gets a read-only token, or `pull-requests: write` is missing) prints a warning and the job keeps Sealmark's own exit code. The body is always written to `sealmark-report.comment.md`, so a separate job with more rights can post it.
 - **Not on a pull request** (`push`, `schedule`): the body is written, nothing is posted.
-- **The token never meets the server.** Sealmark and the server under test run in a step without it. A separate step, which runs only with `comment: 'true'` and after they have exited, gets `github-token` and posts the file.
+- **The token never meets the server.** Sealmark and the server under test run in a step without it. A separate step, which runs only with `comment: 'true'` and after they have exited, gets `github-token` and posts the file. Check out with `persist-credentials: false` as above: otherwise `actions/checkout` leaves the same token in `.git/config`, where the server can read it, and `pull-requests: write` goes with it.
 - **Server text stays inert.** Server, tool and check names come from the server under test. In the comment they only appear inside code, cut to one line, so they cannot mention anyone, add a link or an image, or break the table.
 - **Never on `pull_request_target`.** It runs with the base repository's rights, and grading a fork's server code there would hand them to it; the action writes the body and posts nothing on that event. For forks, post the file from a separate `workflow_run` job that does not run the fork's code.
 
@@ -140,7 +142,7 @@ The `comment` input is newer than the `v1.0.1` tag the examples pin: until a tag
 
 ## Badge job
 
-A job you can copy into your own repository (for example `.github/workflows/sealmark-badge.yml`): it grades the server on every push to `main` and once a week, and keeps the self-reported badge on a branch of its own, so your README always shows the latest run.
+A workflow you can copy into your own repository (for example `.github/workflows/sealmark-badge.yml`): it grades the server on every push to `main` and once a week, and keeps the self-reported badge on a branch of its own, so your README always shows the latest run. Two jobs: the one that runs the server can only read the repository, and the one that can push runs no server code.
 
 ```yaml
 name: sealmark-badge
@@ -152,15 +154,19 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # pushes the badge to the sealmark-badge branch
+  contents: read
 
 concurrency: sealmark-badge
 
 jobs:
-  badge:
+  grade:
     runs-on: ubuntu-latest
+    outputs:
+      badge: ${{ steps.sealmark.outputs.badge }}
     steps:
       - uses: actions/checkout@v4   # pin to a commit SHA
+        with:
+          persist-credentials: false   # no token on disk while the server runs
       - uses: jordanallenlewis/sealmark/action@v1.0.1
         id: sealmark
         with:
@@ -168,20 +174,36 @@ jobs:
           badge: 'true'
           fail-under: none          # publish whatever the grade is
           upload-sarif: 'false'
-      - name: Publish the badge
+          artifact: 'false'
+      - uses: actions/upload-artifact@v4   # pin to a commit SHA
         if: steps.sealmark.outputs.badge != ''
+        with:
+          name: sealmark-badge
+          path: |
+            ${{ steps.sealmark.outputs.badge }}
+            ${{ steps.sealmark.outputs.shields }}
+
+  publish:
+    needs: grade
+    if: needs.grade.outputs.badge != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # pushes the badge; this job runs no server code
+    steps:
+      - uses: actions/checkout@v4   # pin to a commit SHA
+      - uses: actions/download-artifact@v4   # pin to a commit SHA
+        with:
+          name: sealmark-badge
+          path: ${{ runner.temp }}/badge
+      - name: Publish the badge
         env:
-          BADGE: ${{ steps.sealmark.outputs.badge }}
-          SHIELDS: ${{ steps.sealmark.outputs.shields }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          out="$(mktemp -d)"
-          cp "$BADGE" "$SHIELDS" "$out/"
           if git fetch --depth=1 origin sealmark-badge; then git switch -c sealmark-badge FETCH_HEAD; else git switch --orphan sealmark-badge; fi
-          cp "$out"/* .
+          cp "$RUNNER_TEMP"/badge/sealmark-report.badge.svg "$RUNNER_TEMP"/badge/sealmark-report.shields.json .
           git add sealmark-report.badge.svg sealmark-report.shields.json
           git diff --cached --quiet && exit 0   # the same badge as last time
           git commit -q -m "sealmark badge"
@@ -199,7 +221,7 @@ or, through shields.io: `https://img.shields.io/endpoint?url=https://raw.githubu
 - `fail-under: none` keeps the job green whatever the letter, so the badge always says what the last run found, a bad grade included. Keep a separate gated job for pull requests.
 - The branch holds only the two badge files, one commit per change; nothing else belongs on it.
 - A run that is not badge-eligible (a custom configuration, a core-only result) gets the grey `no badge: <reason>` image. That is the honest result, not a failure of the job.
-- Keep `report-dir` a subdirectory (the default `sealmark-report`): report files at the top of the checkout would be in the way when the job switches to the badge branch.
+- Keep `persist-credentials: false` and `contents: read` on the job that runs the server: with the default checkout, the job token sits in `.git/config` where the server could read it.
 - `badge: 'true'` needs one server: `start` or `url`, or `--server <name>` in `args` with a `config`.
 
 ## Permissions
