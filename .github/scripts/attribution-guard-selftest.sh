@@ -136,7 +136,22 @@ done
 echo "== fail closed =="
 H=$(mk "x"$'\n\n'"$CS: abc" "$BASE")
 run "unreachable base, bad commit (was rc=0 before)" 2 pull_request deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$H"
-run "unreachable base on push" 2 push deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$H"
+# force-push: a push whose BASE is not in the checkout judges every commit reachable from HEAD
+# (the old "unreachable base on push" case, exit 2, is replaced by the two cases below: a marker in the history now fails with exit 1)
+UNREACH=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+CLEAN=$(mk "clean after rewrite" "$BASE"); run "force-push: unreachable base, clean full history" 0 push "$UNREACH" "$CLEAN"
+grep -q "base unreachable (force-push): judging full history, 3 commits" "$W/out.txt" && { echo "ok   force-push: notice names 3 commits"; pass=$((pass+1)); } || { echo "FAIL force-push: notice missing"; sed 's/^/     | /' "$W/out.txt"; failn=$((failn+1)); }
+OLDBAD=$(mk "x"$'\n\n'"$CS: abc" "$ROOT"); NEWBAD=$(mk "clean tip" "$OLDBAD"); run "force-push: unreachable base, old commit carries a marker" 1 push "$UNREACH" "$NEWBAD"
+run "force-push: unreachable base, marker in the head commit" 1 push "$UNREACH" "$H"
+run "force-push: unreachable base, old commit has a foreign email" 1 push "$UNREACH" "$(mk ok "$(mk old "$ROOT" "$JN" someone@example.com "$JN" someone@example.com)")"
+git update-ref refs/heads/shallowsrc "$CLEAN"
+SH=$(mktemp -d) && git clone -q --depth 1 --branch shallowsrc "file://$W" "$SH/c" 2>/dev/null && SHH=$(git -C "$SH/c" rev-parse HEAD) || SHH=
+if [ -n "$SHH" ]; then
+  (cd "$SH/c" && EVENT=push BASE=$UNREACH HEAD=$SHH bash "$GUARD" >"$W/out.txt" 2>&1); rc=$?
+  if [ "$rc" = 2 ]; then echo "ok   force-push: shallow checkout dies (exit 2)"; pass=$((pass+1)); else echo "FAIL force-push: shallow checkout (exit $rc, wanted 2)"; failn=$((failn+1)); fi
+else echo "FAIL force-push: could not build a shallow clone"; failn=$((failn+1)); fi
+rm -rf "$SH"
+run "pull request with an unreachable base still dies" 2 pull_request "$UNREACH" "$CLEAN"
 run "empty range (BASE == HEAD)" 2 pull_request "$BASE" "$BASE"
 run "empty base on a pull request" 2 pull_request "" "$H"
 run "missing head" 2 pull_request "$BASE" ""
