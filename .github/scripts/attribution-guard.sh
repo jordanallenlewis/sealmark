@@ -2,9 +2,11 @@
 # attribution-guard (Jordan 2026-11-19): fail a change that credits an AI/agent or carries someone else's identity.
 # Run inside a full checkout (fetch-depth 0). Inputs (env):
 #   EVENT       pull_request | push
-#   BASE HEAD   shas; commits judged are BASE..HEAD (push to a new branch: BASE is empty or all zeros, only HEAD is judged)
+#   BASE HEAD   shas; commits judged are BASE..HEAD (push to a new branch: BASE is empty or all zeros, only HEAD is judged;
+#               push with a BASE that is not in the checkout, i.e. a force-push: every commit reachable from HEAD is judged)
 #   TITLE BODY PR_AUTHOR HEAD_REF   pull_request only
-# Fails closed: a git error, a missing sha or an empty range is an error (exit 2), never a pass.
+# Fails closed: a git error, a missing sha or an empty range is an error (exit 2), never a pass; so is a pull request whose base
+# is not in the checkout.
 set -u -o pipefail
 export LC_ALL=C.UTF-8
 EVENT="${EVENT:-pull_request}"
@@ -51,8 +53,17 @@ if [ -z "$BASE" ] || [ "$BASE" = "$ZERO" ]; then
   echo "attribution-guard: no previous sha (new branch); judging the head commit only"
   commits=$(git rev-parse "$HEAD") || die "cannot resolve head"
 else
-  git rev-parse --verify -q "${BASE}^{commit}" >/dev/null || die "base commit $BASE is not in the checkout (unreachable); refusing to pass"
-  commits=$(git rev-list "${BASE}..${HEAD}") || die "git rev-list ${BASE}..${HEAD} failed"
+  if git rev-parse --verify -q "${BASE}^{commit}" >/dev/null; then
+    commits=$(git rev-list "${BASE}..${HEAD}") || die "git rev-list ${BASE}..${HEAD} failed"
+  else
+    # A force-push (history rewrite) leaves the old tip out of the checkout. On a push only, judge every commit
+    # reachable from HEAD, so the rewritten history is held to the same markers. A pull request still dies here.
+    [ "$EVENT" = push ] || die "base commit $BASE is not in the checkout (unreachable); refusing to pass"
+    # a shallow checkout would silently judge part of the history: refuse
+    [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = false ] || die "base commit $BASE is unreachable and the checkout is shallow (or unreadable); cannot judge the full history"
+    commits=$(git rev-list "$HEAD") || die "git rev-list ${HEAD} failed"
+    echo "attribution-guard: base unreachable (force-push): judging full history, $(grep -c . <<< "$commits") commits"
+  fi
 fi
 [ -n "$commits" ] || die "no commits in ${BASE:-none}..${HEAD}: an empty range is an error, not a pass"
 
