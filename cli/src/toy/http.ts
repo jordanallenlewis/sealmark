@@ -1,5 +1,7 @@
 // Toy Streamable HTTP MCP server for the http pack, built on the MCP SDK's StreamableHTTPServerTransport and node:http (no express).
-// Run: node dist/toy/http.js --mode <good|open|cors-star|redirect-slash> [--port <n>] [--token <bearer>] [--backend <url>]
+// Run: node dist/toy/http.js --mode <good|open|cors-star|redirect-slash> [--port <n>] [--token <bearer>] [--backend <url>] [--crash-on-read]
+// With --crash-on-read (an extra knob, not a mode) the toy also advertises and lists one resource, and the whole process exits on the first
+// resources/read: the round 9 test that resources-read runs after every scored pack on an HTTP server (one process serves them all).
 // It listens on 127.0.0.1 only (a toy must never be reachable from the network) and prints `listening http://127.0.0.1:<port>/mcp`.
 // With --backend <url> (an extra knob, not a mode) the toy also offers a `forward` tool that POSTs {"q": ...} to <url>/sql with the caller's own
 // Authorization header, and it accepts any non-empty bearer token (the caller's token is passed through, not compared): the harness's upstream
@@ -16,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema, isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 export const HTTP_TOY_MODES = ["good", "open", "cors-star", "redirect-slash"] as const;
 export type HttpToyMode = (typeof HTTP_TOY_MODES)[number];
@@ -34,8 +36,12 @@ export interface HttpToy {
   close(): Promise<void>;
 }
 
-function makeServer(mode: HttpToyMode, backend?: string): Server {
-  const server = new Server({ name: `sealmark-toy-http-${mode}`, version: "0.0.1" }, { capabilities: { tools: {} } });
+function makeServer(mode: HttpToyMode, backend?: string, crashOnRead = false): Server {
+  const server = new Server({ name: `sealmark-toy-http-${mode}`, version: "0.0.1" }, { capabilities: { tools: {}, ...(crashOnRead ? { resources: {} } : {}) } });
+  if (crashOnRead) {
+    server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [{ uri: "memo://crash", name: "crash", description: "Reading this stops the server." }] }));
+    server.setRequestHandler(ReadResourceRequestSchema, async () => process.exit(1));
+  }
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       { name: "echo", description: "Return the given text unchanged.", inputSchema: { type: "object", properties: { text: { type: "string", description: "Text to return" } }, required: ["text"] } },
@@ -94,7 +100,7 @@ function jsonError(res: http.ServerResponse, status: number, code: number, messa
   res.end(JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }));
 }
 
-export async function startHttpToy(mode: HttpToyMode, opts: { port?: number; token?: string; backend?: string } = {}): Promise<HttpToy> {
+export async function startHttpToy(mode: HttpToyMode, opts: { port?: number; token?: string; backend?: string; crashOnRead?: boolean } = {}): Promise<HttpToy> {
   const token = opts.token ?? HTTP_TOY_TOKEN;
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: Server }>();
   let port = 0;
@@ -156,7 +162,7 @@ export async function startHttpToy(mode: HttpToyMode, opts: { port?: number; tok
       for (let i = 0; i < req.rawHeaders.length; i += 2) if (req.rawHeaders[i]!.toLowerCase() === "mcp-protocol-version") req.rawHeaders.splice(i, 2);
       res.setHeader("mcp-session-id", "1");
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-      const server = makeServer(mode, opts.backend);
+      const server = makeServer(mode, opts.backend, opts.crashOnRead);
       res.on("close", () => {
         void transport.close();
         void server.close();
@@ -172,7 +178,7 @@ export async function startHttpToy(mode: HttpToyMode, opts: { port?: number; tok
       return s.transport.handleRequest(req, res, body);
     }
     if (req.method === "POST" && isInitializeRequest(body)) {
-      const server = makeServer(mode, opts.backend);
+      const server = makeServer(mode, opts.backend, opts.crashOnRead);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         // `good` answers with an SSE stream (the SDK default); `cors-star` answers with plain JSON, so both framings are exercised.
@@ -219,13 +225,13 @@ export async function startHttpToy(mode: HttpToyMode, opts: { port?: number; tok
 
 // Command line entry: only when this file is the program, not when a test imports it.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { values } = parseArgs({ options: { mode: { type: "string" }, port: { type: "string" }, token: { type: "string" }, backend: { type: "string" } }, strict: true });
+  const { values } = parseArgs({ options: { mode: { type: "string" }, port: { type: "string" }, token: { type: "string" }, backend: { type: "string" }, "crash-on-read": { type: "boolean" } }, strict: true });
   const mode = values.mode as HttpToyMode;
   if (!HTTP_TOY_MODES.includes(mode)) {
     process.stderr.write(`toy http server: --mode must be one of ${HTTP_TOY_MODES.join(", ")}\n`);
     process.exit(2);
   }
-  const toy = await startHttpToy(mode, { port: values.port ? Number(values.port) : 0, token: values.token, backend: values.backend });
+  const toy = await startHttpToy(mode, { port: values.port ? Number(values.port) : 0, token: values.token, backend: values.backend, crashOnRead: values["crash-on-read"] === true });
   process.stdout.write(`listening ${toy.url}\n`);
   const stop = () => void toy.close().finally(() => process.exit(0));
   process.once("SIGINT", stop);

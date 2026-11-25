@@ -19,6 +19,7 @@ import { gradePack } from "./grade.js";
 import { classifyStartFailure, type StartFailure } from "./start-failure.js";
 import { McpSession, ProtocolViolation, SessionError, discoverSqlTools, expandHarness, resolvePackage, ssePackSkip, usesBearer, type OpenOptions } from "./mcp.js";
 import { MAX_TOOLS_PROBED, applyChecksConfig, boundSeen, protocolFailure, refusalQuality, runCore, variantsFor } from "./packs/core.js";
+import { extrasInconclusive, promptsGet, PROMPTS_GET_META, resourcesRead, RESOURCES_READ_META } from "./packs/extras.js";
 import { runDb } from "./packs/db.js";
 import { effectsGateReason } from "./packs/effects.js";
 import { ensureGitFixture } from "./packs/git.js";
@@ -778,6 +779,8 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
     // ---- the server, once, for the core pack and for discovering its tools ----
     log("starting the server under test");
     let session: McpSession | undefined;
+    /** Core left resources-read and prompts-get for after the other packs (HTTP: see below). */
+    let deferExtras = false;
     let protocolChecks: CheckResult[] | undefined;
     /** Round 7: the server refused the token the stub issuer signed, so no tool can be reached; the oauth pack still runs and says why. */
     let oauthRejected: { status: number; detail: string } | undefined;
@@ -883,8 +886,10 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
           warnings.push(...valid.warnings);
         }
         const robust = eff.checks["robust-input"];
+        deferExtras = transport === "http";
         const coreChecks = await track(runCore({
           session,
+          deferExtras,
           canaries: scanSecrets,
           seen: boundSeen(valid?.seen ?? [], scanSecrets),
           checks: eff.checks,
@@ -1111,6 +1116,25 @@ export async function runHarness(opts: RunOptions): Promise<RunResult> {
         callStats.set(pack.id, { calls: mine.reduce((n, s) => n + s.calls, 0), processed: mine.reduce((n, s) => n + s.processed, 0) });
         for (const s of mine) await s.close();
         if (pack.id === "exec") await killStrays().catch(() => {});
+      }
+    }
+
+    // ---- resources and prompts (core, advisory) for an HTTP server ----
+    // One server process serves every pack over HTTP, so a request that stopped it inside core would change what the scored packs
+    // above saw. Here they come after every pack, on a session of their own.
+    if (deferExtras) {
+      const off = [RESOURCES_READ_META.id, PROMPTS_GET_META.id].every((id) => eff.checks[id]?.enabled === false);
+      let extra: McpSession | undefined;
+      try {
+        if (off) checks.push(...applyChecksConfig(extrasInconclusive("disabled by config"), eff.checks));
+        else {
+          extra = await open(db ? roleCtx("admin") : baseCtx(), { extraEnv }, "core");
+          checks.push(...applyChecksConfig([await resourcesRead(extra, eff.checks[RESOURCES_READ_META.id]), await promptsGet(extra, eff.checks[PROMPTS_GET_META.id])], eff.checks));
+        }
+      } catch (e) {
+        checks.push(...applyChecksConfig(extrasInconclusive(`the server could not be opened again for resources and prompts: ${(e as Error).message}`), eff.checks));
+      } finally {
+        await extra?.close();
       }
     }
 

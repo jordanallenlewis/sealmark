@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { McpSession, type ExtraOutcome, type PromptInfo, type ResourceInfo } from "../mcp.js";
@@ -13,7 +16,10 @@ import {
   UNKNOWN_RESOURCE_URI,
   type ExtrasSession,
 } from "../packs/extras.js";
-import type { CheckResult } from "../types.js";
+import { runHarness } from "../run.js";
+import type { CheckResult, PackId, SealmarkConfig } from "../types.js";
+import { freePort } from "./helpers.js";
+import { effectiveFor } from "./packctx.js";
 
 // Round 9: the resources and prompts candidates. Unit tests drive a hand-built session (every reply chosen by the test); the toy
 // tests run the real SDK client against extras-r9 through runCore.
@@ -24,6 +30,7 @@ const err = (code = -32002, message = "not found"): ExtraOutcome => ({ ok: false
 const CLOSED: ExtraOutcome = { ok: false, message: "Connection closed", timedOut: false, closed: true, invalid: false };
 const TIMEOUT: ExtraOutcome = { ok: false, message: "Request timed out", timedOut: true, closed: false, invalid: false };
 const INVALID: ExtraOutcome = { ok: false, message: "result is not valid MCP (contents: Required)", timedOut: false, closed: false, invalid: true };
+const UNREACHABLE: ExtraOutcome = { ok: false, message: "fetch failed", timedOut: false, closed: false, invalid: false, transport: true };
 
 interface Fake extends ExtrasSession {
   reads: string[];
@@ -156,6 +163,28 @@ describe("resources-read (hand-built session)", () => {
     assert.ok(codes(slow).includes("resources.unknown-timeout"));
   });
 
+  it("inconclusive when a read gets no MCP answer at all (the server cannot be reached), never a refusal", async () => {
+    for (const at of ["a://1", UNKNOWN_RESOURCE_URI]) {
+      const r = await resourcesRead(fake({ resources: res("a://1"), read: (u) => (u === at ? UNREACHABLE : u === UNKNOWN_RESOURCE_URI ? err() : OK_READ) }));
+      assert.equal(r.verdict, "inconclusive", `${at}: ${r.summary}`);
+      assert.ok(codes(r).includes("resources.unreachable"));
+      assert.ok(!codes(r).includes("resources.unknown-refused"));
+    }
+  });
+
+  it("a result that is not valid MCP for the unlisted URI is a finding", async () => {
+    const r = await resourcesRead(fake({ resources: res("a://1"), read: (u) => (u === UNKNOWN_RESOURCE_URI ? INVALID : OK_READ) }));
+    assert.equal(r.verdict, "part");
+    assert.ok(codes(r).includes("resources.unknown-invalid"));
+  });
+
+  it("stays linear on a flooding listing", async () => {
+    const t0 = Date.now();
+    const r = await resourcesRead(fake({ resources: res(...Array.from({ length: 60_000 }, (_, i) => `a://${i % 30_000}`)) }));
+    assert.ok(Date.now() - t0 < 1500, `took ${Date.now() - t0} ms`);
+    assert.ok(r.evidence.length <= 26);
+  });
+
   it("any error code on the unlisted URI counts as a refusal", async () => {
     for (const code of [-32002, -32602, -32603, -32000]) assert.equal((await resourcesRead(fake({ resources: res("a://1"), read: (u) => (u === UNKNOWN_RESOURCE_URI ? err(code) : OK_READ) }))).verdict, "pass", String(code));
   });
@@ -239,9 +268,48 @@ describe("prompts-get (hand-built session)", () => {
   });
 
   it("a prompt with required arguments that refuses the fixed value is recorded, not counted", async () => {
-    const r = await promptsGet(fake({ prompts: [P("review", ["count"])], get: (n, a) => (n === "review" && a ? err(-32602, "count must be a number") : err(-32602)) }));
+    const r = await promptsGet(fake({ prompts: [P("a"), P("review", ["count"])], get: (n, a) => (n === "review" && a ? err(-32602, "count must be a number") : n === "a" ? OK_GET : err(-32602)) }));
     assert.equal(r.verdict, "pass", r.summary);
     assert.ok(codes(r).includes("prompts.get-refused-value"));
+  });
+
+  it("inconclusive, never pass, when every listed prompt only refused the fixed value (nothing was fetched)", async () => {
+    const r = await promptsGet(fake({ prompts: [P("review", ["count"]), P("other", ["n"])], get: (n, a) => (a ? err(-32602, "must be a number") : err(-32602)) }));
+    assert.equal(r.verdict, "inconclusive", r.summary);
+    assert.match(r.summary, /no listed prompt could be fetched/);
+  });
+
+  it("method not found or internal error on a prompt with required arguments counts as a failure, not a refused value", async () => {
+    for (const code of [-32601, -32603]) {
+      const r = await promptsGet(fake({ prompts: [P("review", ["code"]), P("other", ["n"])], get: () => err(code, "boom") }));
+      assert.equal(r.verdict, "fail", `${code}: ${r.summary}`);
+      assert.ok(codes(r).includes("prompts.get-error"));
+    }
+  });
+
+  it("inconclusive when a request gets no MCP answer at all (the server cannot be reached), never a refusal", async () => {
+    for (const at of ["a", "review", UNKNOWN_PROMPT_NAME]) {
+      const r = await promptsGet(fake({ prompts: [P("a"), P("review", ["code"])], get: (n, a) => (n === at && (at !== "review" || a) ? UNREACHABLE : n === UNKNOWN_PROMPT_NAME ? err(-32602) : n === "review" && !a ? err(-32602) : OK_GET) }));
+      assert.equal(r.verdict, "inconclusive", `${at}: ${r.summary}`);
+      assert.ok(codes(r).includes("prompts.unreachable"));
+      assert.ok(!codes(r).includes("prompts.unknown-refused") && !codes(r).includes("prompts.get-refused-value"), "an unreachable server never reads as a refusal");
+    }
+  });
+
+  it("a result that is not valid MCP for the unlisted name or the missing argument is a finding", async () => {
+    const r = await promptsGet(fake({ prompts: [P("a"), P("review", ["code"])], get: (n, a) => (n === UNKNOWN_PROMPT_NAME || (n === "review" && !a) ? INVALID : OK_GET) }));
+    assert.equal(r.verdict, "part");
+    assert.ok(codes(r).includes("prompts.unknown-invalid") && codes(r).includes("prompts.missing-argument-invalid"));
+  });
+
+  it("stays linear on a flooding listing and keeps every evidence line bounded", async () => {
+    const many = Array.from({ length: 60_000 }, (_, i) => P(`p${i % 30_000}`));
+    const wide: PromptInfo = { name: "wide", arguments: Array.from({ length: 60_000 }, (_, i) => ({ name: `a${i % 30_000}`, required: true })) };
+    const t0 = Date.now();
+    const r = await promptsGet(fake({ prompts: [wide, ...many] }));
+    assert.ok(Date.now() - t0 < 1500, `took ${Date.now() - t0} ms`);
+    assert.ok(r.evidence.length <= 26);
+    assert.ok(r.evidence.every((e) => e.probe.length <= 200 && e.outcome.length <= 200), JSON.stringify(r.evidence.map((e) => e.probe.length)));
   });
 
   it("but a timeout or an invalid result on such a prompt is counted", async () => {
@@ -335,5 +403,46 @@ describe("resources-read and prompts-get on the toy server", { timeout: 180_000 
   it("clean: the unlisted URI is refused with the spec's resource-not-found code", async () => {
     const r = pick(await onToy("clean"), "resources-read");
     assert.match(r.evidence.find((e) => e.code === "resources.unknown-refused")!.outcome, /-32002/);
+  });
+});
+
+describe("an HTTP server: resources and prompts run after every scored pack", { timeout: 240_000 }, () => {
+  it("runCore leaves both out when deferExtras is set", async () => {
+    const s = await McpSession.open({ command: process.execPath, args: [TOY, "--mode", "clean"], env: {} }, { vars: {}, dsns: {} }, { cleanCwd: true });
+    sessions.push(s);
+    const out = await runCore({ session: s, canaries: [], seen: [], hangMs: 6000, deferExtras: true });
+    assert.ok(!out.some((c) => c.id === "resources-read" || c.id === "prompts-get"));
+  });
+
+  const HTTP_TOY = fileURLToPath(new URL("../toy/http.js", import.meta.url));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "sealmark-r9-http-")));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  let k = 0;
+  async function runHttp(crashOnRead: boolean, packs: PackId[]) {
+    const base = join(dir, `t${k++}`);
+    const parent = join(base, "sandboxes");
+    mkdirSync(parent, { recursive: true });
+    const port = await freePort();
+    const config: SealmarkConfig = {
+      name: "r9-http",
+      version: "0.0.1",
+      server: { command: process.execPath, args: [HTTP_TOY, "--mode", "good", "--port", String(port), ...(crashOnRead ? ["--crash-on-read"] : [])], url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: "Bearer sm-toy-bearer-token" }, start_timeout_sec: 30 },
+    };
+    const effective = effectiveFor(config, packs, { dir: base, parent }, { plugins: [] } as never);
+    return runHarness({ config, effective, packs, packsExplicit: true, timeoutProbeSec: 2, log: () => {} });
+  }
+
+  it("a read that stops the server changes no scored verdict of the packs that share its process", async () => {
+    const packs: PackId[] = ["core", "http"];
+    const crash = await runHttp(true, packs);
+    const calm = await runHttp(false, packs);
+    const scored = (r: Awaited<ReturnType<typeof runHttp>>) => Object.fromEntries(r.checks.filter((c) => !c.advisory).map((c) => [c.id, c.verdict]));
+    assert.deepEqual(scored(crash), scored(calm));
+    assert.ok(Object.values(scored(calm)).some((v) => v === "pass"), "the http pack ran");
+    const read = crash.checks.find((c) => c.id === "resources-read")!;
+    assert.ok(read, "resources-read is reported for an HTTP server");
+    assert.notEqual(read.verdict, "pass", read.summary);
+    assert.equal(calm.checks.find((c) => c.id === "resources-read")?.verdict, "na");
+    assert.ok(crash.checks.findIndex((c) => c.id === "resources-read") > crash.checks.findIndex((c) => c.pack === "http"), "after the http pack");
   });
 });

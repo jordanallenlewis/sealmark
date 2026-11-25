@@ -34,6 +34,11 @@ export interface CoreCtx {
   /** `checks.<id>.enabled` and `.severity` from the configuration. Absent means every check runs with its built-in severity. */
   checks?: Record<string, CheckConfig>;
   /**
+   * Leave out resources-read and prompts-get: the caller runs them after the other packs. An HTTP server is one process for every
+   * pack, so a request that stopped it here would change what the scored packs after core see.
+   */
+  deferExtras?: boolean;
+  /**
    * Filled by robust-input: which tool and arguments produced each response it pushed onto `seen` (the bounded text, see keeper), so
    * secret-echo can name the tool that leaked. Leave it unset; runCore creates it.
    */
@@ -830,8 +835,9 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
   return [protocol, hygiene, robust, secret, instructionsHygiene(ctx), ...lint, ...(await extrasChecks(ctx))];
 }
 
-/** resources-read then prompts-get, on the discovery session. */
+/** resources-read then prompts-get, on the discovery session (none when the caller runs them later, see CoreCtx.deferExtras). */
 async function extrasChecks(ctx: CoreCtx): Promise<CheckResult[]> {
+  if (ctx.deferExtras) return [];
   return [await resourcesRead(ctx.session, ctx.checks?.[RESOURCES_READ_META.id]), await promptsGet(ctx.session, ctx.checks?.[PROMPTS_GET_META.id])];
 }
 

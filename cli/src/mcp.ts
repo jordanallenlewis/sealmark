@@ -146,7 +146,7 @@ export interface PromptInfo {
  */
 export type ExtraOutcome =
   | { ok: true; result: unknown }
-  | { ok: false; message: string; timedOut: boolean; closed: boolean; invalid: boolean; code?: number };
+  | { ok: false; message: string; timedOut: boolean; closed: boolean; invalid: boolean; code?: number; /** No MCP answer at all (an HTTP fetch that failed): not a refusal. */ transport?: boolean };
 
 export interface ResourceInfo {
   uri: string;
@@ -611,7 +611,8 @@ export class McpSession {
       const closed = mcp?.code === ErrorCode.ConnectionClosed || this.closed;
       const timedOut = mcp?.code === ErrorCode.RequestTimeout && Date.now() - t0 >= timeoutMs - 250;
       const message = invalid ? `result is not valid MCP (${describeSchemaError(e)})` : tidy((e as Error).message ?? String(e), 200);
-      return { ok: false, message, timedOut, closed, invalid, ...(mcp && !invalid && !closed && !timedOut ? { code: mcp.code } : {}) };
+      const answered = mcp && !invalid && !closed && !timedOut;
+      return { ok: false, message, timedOut, closed, invalid, ...(answered ? { code: mcp.code } : {}), ...(!mcp && !invalid && !closed ? { transport: true } : {}) };
     }
   }
 
