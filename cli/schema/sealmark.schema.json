@@ -1749,6 +1749,41 @@
           },
           "additionalProperties": false
         },
+        "param-descriptions": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run param-descriptions. false reports it as n/a (\"disabled by config\") so it stays visible. param-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how param-descriptions counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. param-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "pii": {
           "type": "object",
           "properties": {
@@ -2694,6 +2729,41 @@
               "x-sealmark": {
                 "since": "0.2-draft",
                 "standardLocked": true,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "tool-descriptions": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run tool-descriptions. false reports it as n/a (\"disabled by config\") so it stays visible. tool-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how tool-descriptions counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. tool-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
                 "mergeable": false,
                 "secret": false,
                 "flagOnly": false
@@ -6840,6 +6910,41 @@
               },
               "additionalProperties": false
             },
+            "param-descriptions": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run param-descriptions. false reports it as n/a (\"disabled by config\") so it stays visible. param-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how param-descriptions counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. param-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
             "pii": {
               "type": "object",
               "properties": {
@@ -7785,6 +7890,41 @@
                   "x-sealmark": {
                     "since": "0.2-draft",
                     "standardLocked": true,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "tool-descriptions": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run tool-descriptions. false reports it as n/a (\"disabled by config\") so it stays visible. tool-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how tool-descriptions counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. tool-descriptions is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
                     "mergeable": false,
                     "secret": false,
                     "flagOnly": false

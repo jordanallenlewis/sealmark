@@ -1,6 +1,7 @@
 import type { CheckConfig } from "../config/model.js";
 import { rejectedBeforeRunning, type McpSession, type ToolInfo } from "../mcp.js";
 import type { CheckCoverage, CheckDoc, CheckResult, Evidence, ToolAnnotations } from "../types.js";
+import { describeDescriptions, paramDescriptions, PARAM_DESCRIPTIONS_META, toolDescriptions, TOOL_DESCRIPTIONS_META } from "./descriptions.js";
 import { FAILURE_VETO } from "./net.js";
 import { brief, excerpt, refusedInTextOnly, requiresTask, TASK_ONLY_REASON } from "./shared.js";
 
@@ -781,8 +782,10 @@ export function protocolFailure(message: string): CheckResult[] {
     { id: "tool-poisoning", pack: "core", label: "No tool-poisoning indicators in tool metadata", critical: true, scope: "server (what it declares, not what it does)", verdict: "inconclusive", summary: reason, evidence: [] },
     { id: "robust-input", pack: "core", label: "Survives malformed tool input", critical: false, scope: "server", verdict: "inconclusive", summary: reason, evidence: [] },
     { id: "secret-echo", pack: "core", label: "No environment secret echoed in responses", critical: true, scope: "server", verdict: "inconclusive", summary: reason, evidence: [] },
-    // The same five core checks as every other run (refusal-quality is added by the harness after the packs).
+    // The same core checks as every other run (refusal-quality is added by the harness after the packs).
     { id: INSTRUCTIONS_HYGIENE_META.id, pack: "core", label: INSTRUCTIONS_HYGIENE_META.label, critical: false, advisory: true, scope: INSTRUCTIONS_HYGIENE_META.scope, verdict: "inconclusive", summary: reason, evidence: [] },
+    // The description lint reads the listing, which could not be parsed.
+    ...[TOOL_DESCRIPTIONS_META, PARAM_DESCRIPTIONS_META].map((m): CheckResult => ({ id: m.id, pack: "core", label: m.label, critical: false, advisory: true, scope: m.scope, verdict: "inconclusive", summary: reason, evidence: [] })),
   ];
 }
 
@@ -803,6 +806,8 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
       { id: "robust-input", pack: "core", label: "Survives malformed tool input", critical: false, scope: "server", verdict: "na", summary: none, evidence: [] },
       { id: "secret-echo", pack: "core", label: "No environment secret echoed in responses", critical: true, scope: "server", verdict: "na", summary: none, evidence: [] },
       instructionsHygiene(ctx),
+      toolDescriptions(ctx.session.tools, ctx.checks?.[TOOL_DESCRIPTIONS_META.id]),
+      paramDescriptions(ctx.session.tools, ctx.checks?.[PARAM_DESCRIPTIONS_META.id]),
     ];
   }
   const listing = JSON.stringify({ serverInfo: ctx.session.serverInfo, instructions: ctx.session.instructions, tools: ctx.session.tools, prompts: ctx.session.prompts ?? [], resources: ctx.session.resources ?? [] });
@@ -814,7 +819,8 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
   const secret = secretEchoCheck(ctx, listing);
   // The handshake check reads what the session saw on the wire (stdout noise, invalid results) through every call above, so it runs last.
   const protocol = protocolCheck(ctx);
-  return [protocol, hygiene, robust, secret, instructionsHygiene(ctx)];
+  // The description lint (advisory) reads only the listing: no call, so its place in the order changes nothing it sees.
+  return [protocol, hygiene, robust, secret, instructionsHygiene(ctx), toolDescriptions(ctx.session.tools, ctx.checks?.[TOOL_DESCRIPTIONS_META.id]), paramDescriptions(ctx.session.tools, ctx.checks?.[PARAM_DESCRIPTIONS_META.id])];
 }
 
 export type { ToolInfo };
@@ -932,5 +938,6 @@ export function describe(): CheckDoc[] {
       configKeys: ["checks.instructions-hygiene.enabled", "checks.instructions-hygiene.severity", "checks.instructions-hygiene.deny"],
       since: "0.3-draft",
     },
+    ...describeDescriptions(common),
   ];
 }
