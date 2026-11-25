@@ -24,6 +24,9 @@ export const CANDIDATE_CHECKS = [
   // Round 8: the description lint, two advisory core checks over the tools/list listing (same order as CHECKS in schema.ts).
   "tool-descriptions",
   "param-descriptions",
+  // Round 9: resources and prompts, two advisory core checks (same order as CHECKS in schema.ts).
+  "resources-read",
+  "prompts-get",
   "scope-escape",
   "sql-guard-statements",
   "sql-guard-references",

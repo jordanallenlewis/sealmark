@@ -140,6 +140,14 @@ export interface PromptInfo {
   arguments?: { name: string; description?: string; required?: boolean }[];
 }
 
+/**
+ * What one resources/read or prompts/get request came to. `code` is the JSON-RPC error code the server answered with (absent for a
+ * timeout, a closed connection or a result that is not valid MCP).
+ */
+export type ExtraOutcome =
+  | { ok: true; result: unknown }
+  | { ok: false; message: string; timedOut: boolean; closed: boolean; invalid: boolean; code?: number };
+
 export interface ResourceInfo {
   uri: string;
   name?: string;
@@ -579,6 +587,31 @@ export class McpSession {
       }
       if (closed && this.transportError) msg += ` [transport: ${this.transportError}]`;
       return { isError: true, text: "", elapsedMs: Date.now() - t0, timedOut: mcp?.code === ErrorCode.RequestTimeout && Date.now() - t0 >= timeoutMs - 250, rpcError: msg, closed };
+    }
+  }
+
+  /** resources/read on one URI (the resources-read candidate). Never throws; never counts toward `invalidResults` or `calls`. */
+  async readResource(uri: string, timeoutMs: number): Promise<ExtraOutcome> {
+    return this.extra(() => this.client.readResource({ uri }, { timeout: timeoutMs }), timeoutMs);
+  }
+
+  /** prompts/get on one prompt (the prompts-get candidate). Never throws; never counts toward `invalidResults` or `calls`. */
+  async getPrompt(name: string, args: Record<string, string> | undefined, timeoutMs: number): Promise<ExtraOutcome> {
+    return this.extra(() => this.client.getPrompt(args ? { name, arguments: args } : { name }, { timeout: timeoutMs }), timeoutMs);
+  }
+
+  private async extra(send: () => Promise<unknown>, timeoutMs: number): Promise<ExtraOutcome> {
+    if (this.closed) return { ok: false, message: "the session is closed", timedOut: false, closed: true, invalid: false };
+    const t0 = Date.now();
+    try {
+      return { ok: true, result: await send() };
+    } catch (e) {
+      const mcp = e instanceof McpError ? e : undefined;
+      const invalid = isSchemaError(e);
+      const closed = mcp?.code === ErrorCode.ConnectionClosed || this.closed;
+      const timedOut = mcp?.code === ErrorCode.RequestTimeout && Date.now() - t0 >= timeoutMs - 250;
+      const message = invalid ? `result is not valid MCP (${describeSchemaError(e)})` : tidy((e as Error).message ?? String(e), 200);
+      return { ok: false, message, timedOut, closed, invalid, ...(mcp && !invalid && !closed && !timedOut ? { code: mcp.code } : {}) };
     }
   }
 

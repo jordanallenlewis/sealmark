@@ -1,6 +1,7 @@
 import type { CheckConfig } from "../config/model.js";
 import { rejectedBeforeRunning, type McpSession, type ToolInfo } from "../mcp.js";
 import type { CheckCoverage, CheckDoc, CheckResult, Evidence, ToolAnnotations } from "../types.js";
+import { describeExtras, extrasInconclusive, promptsGet, PROMPTS_GET_META, resourcesRead, RESOURCES_READ_META } from "./extras.js";
 import { describeDescriptions, paramDescriptions, PARAM_DESCRIPTIONS_META, toolDescriptions, TOOL_DESCRIPTIONS_META } from "./descriptions.js";
 import { FAILURE_VETO } from "./net.js";
 import { brief, excerpt, refusedInTextOnly, requiresTask, TASK_ONLY_REASON } from "./shared.js";
@@ -786,6 +787,8 @@ export function protocolFailure(message: string): CheckResult[] {
     { id: INSTRUCTIONS_HYGIENE_META.id, pack: "core", label: INSTRUCTIONS_HYGIENE_META.label, critical: false, advisory: true, scope: INSTRUCTIONS_HYGIENE_META.scope, verdict: "inconclusive", summary: reason, evidence: [] },
     // The description lint reads the listing, which could not be parsed.
     ...[TOOL_DESCRIPTIONS_META, PARAM_DESCRIPTIONS_META].map((m): CheckResult => ({ id: m.id, pack: "core", label: m.label, critical: false, advisory: true, scope: m.scope, verdict: "inconclusive", summary: reason, evidence: [] })),
+    // Resources and prompts: nothing listed could be read.
+    ...extrasInconclusive(reason),
   ];
 }
 
@@ -800,7 +803,7 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
     const scanned = hygieneCheck(ctx);
     const hasText = (ctx.session.prompts?.length ?? 0) + (ctx.session.resources?.length ?? 0) > 0 || Boolean(ctx.session.instructions);
     const poisoning: CheckResult = hasText || scanned.verdict !== "pass" ? scanned : { id: "tool-poisoning", pack: "core", label: "No tool-poisoning indicators in tool metadata", critical: true, scope: "server (what it declares, not what it does)", verdict: "na", summary: none, evidence: [] };
-    return [
+    const head: CheckResult[] = [
       protocolCheck(ctx),
       poisoning,
       { id: "robust-input", pack: "core", label: "Survives malformed tool input", critical: false, scope: "server", verdict: "na", summary: none, evidence: [] },
@@ -809,6 +812,8 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
       toolDescriptions(ctx.session.tools, ctx.checks?.[TOOL_DESCRIPTIONS_META.id]),
       paramDescriptions(ctx.session.tools, ctx.checks?.[PARAM_DESCRIPTIONS_META.id]),
     ];
+    // Resources and prompts (advisory) send requests, so they run after every check above has read the session.
+    return [...head, ...(await extrasChecks(ctx))];
   }
   const listing = JSON.stringify({ serverInfo: ctx.session.serverInfo, instructions: ctx.session.instructions, tools: ctx.session.tools, prompts: ctx.session.prompts ?? [], resources: ctx.session.resources ?? [] });
   const hygiene = hygieneCheck(ctx);
@@ -820,7 +825,14 @@ async function runCoreChecks(ctx: CoreCtx): Promise<CheckResult[]> {
   // The handshake check reads what the session saw on the wire (stdout noise, invalid results) through every call above, so it runs last.
   const protocol = protocolCheck(ctx);
   // The description lint (advisory) reads only the listing: no call, so its place in the order changes nothing it sees.
-  return [protocol, hygiene, robust, secret, instructionsHygiene(ctx), toolDescriptions(ctx.session.tools, ctx.checks?.[TOOL_DESCRIPTIONS_META.id]), paramDescriptions(ctx.session.tools, ctx.checks?.[PARAM_DESCRIPTIONS_META.id])];
+  const lint = [toolDescriptions(ctx.session.tools, ctx.checks?.[TOOL_DESCRIPTIONS_META.id]), paramDescriptions(ctx.session.tools, ctx.checks?.[PARAM_DESCRIPTIONS_META.id])];
+  // Resources and prompts (advisory) send requests, so they run after protocol has read the session: no scored verdict sees them.
+  return [protocol, hygiene, robust, secret, instructionsHygiene(ctx), ...lint, ...(await extrasChecks(ctx))];
+}
+
+/** resources-read then prompts-get, on the discovery session. */
+async function extrasChecks(ctx: CoreCtx): Promise<CheckResult[]> {
+  return [await resourcesRead(ctx.session, ctx.checks?.[RESOURCES_READ_META.id]), await promptsGet(ctx.session, ctx.checks?.[PROMPTS_GET_META.id])];
 }
 
 export type { ToolInfo };
@@ -939,5 +951,6 @@ export function describe(): CheckDoc[] {
       since: "0.3-draft",
     },
     ...describeDescriptions(common),
+    ...describeExtras(common),
   ];
 }

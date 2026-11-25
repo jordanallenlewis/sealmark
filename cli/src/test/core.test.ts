@@ -176,7 +176,7 @@ describe("core-only runs are labelled hygiene only", () => {
 
   it("echoenvok without a probe: every verdict passes, core A, hygiene only (the leak is only reachable with a valid call)", async () => {
     const r = await runHarness({ config: extraConfig("echoenvok"), packs: ["core"] as PackId[], packsExplicit: true, timeoutProbeSec: 2, log: quiet });
-    assert.deepEqual(verdicts(r, "core"), { protocol: "pass", "tool-poisoning": "pass", "robust-input": "pass", "secret-echo": "pass", "instructions-hygiene": "na", "tool-descriptions": "pass", "param-descriptions": "pass", "refusal-quality": "na" });
+    assert.deepEqual(verdicts(r, "core"), { protocol: "pass", "tool-poisoning": "pass", "robust-input": "pass", "secret-echo": "pass", "instructions-hygiene": "na", "tool-descriptions": "pass", "param-descriptions": "pass", "resources-read": "na", "prompts-get": "na", "refusal-quality": "na" });
     assert.equal(gradeOf(r, "core")?.letter, "A");
     assert.deepEqual(r.coverage, { validCalls: 0, toolsCalledValid: 0, toolsTotal: 2, level: "hygiene-only" });
     assert.equal(r.badge?.eligible, false);
@@ -193,7 +193,7 @@ describe("core-only runs are labelled hygiene only", () => {
       const ctx: CoreCtx = { session, canaries, seen: [valid.text], hangMs: 2000, validCalls: [{ tool: "echo", args: { text: "hello" }, text: valid.text, isError: valid.isError }] };
       const checks = await runCore(ctx);
       const got = Object.fromEntries(checks.map((c) => [c.id, c.verdict]));
-      assert.deepEqual(got, { protocol: "pass", "tool-poisoning": "pass", "robust-input": "pass", "secret-echo": "fail", "instructions-hygiene": "na", "tool-descriptions": "pass", "param-descriptions": "pass" });
+      assert.deepEqual(got, { protocol: "pass", "tool-poisoning": "pass", "robust-input": "pass", "secret-echo": "fail", "instructions-hygiene": "na", "tool-descriptions": "pass", "param-descriptions": "pass", "resources-read": "na", "prompts-get": "na" });
       const grade = gradePack("core", checks)!;
       assert.equal(grade.letter, "D");
       assert.equal(grade.capped, true);

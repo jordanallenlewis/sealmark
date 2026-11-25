@@ -135,6 +135,9 @@ export const CHECKS: CheckDef[] = [
   // Round 8 candidates: the description lint, two advisory core checks that read only the tools/list listing. Unlocked, so the standard hash does not move.
   { id: "tool-descriptions", pack: "core", since: S03, candidate: true },
   { id: "param-descriptions", pack: "core", since: S03, candidate: true },
+  // Round 9 candidates: resources and prompts, two advisory core checks that read what the server listed. Unlocked, so the standard hash does not move.
+  { id: "resources-read", pack: "core", since: S03, candidate: true },
+  { id: "prompts-get", pack: "core", since: S03, candidate: true },
   { id: "scope-escape", pack: "scope", since: S03, candidate: true },
   { id: "sql-guard-statements", pack: "sql-guard", since: S03, candidate: true },
   { id: "sql-guard-references", pack: "sql-guard", since: S03, candidate: true },

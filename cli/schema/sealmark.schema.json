@@ -1854,6 +1854,41 @@
           },
           "additionalProperties": false
         },
+        "prompts-get": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run prompts-get. false reports it as n/a (\"disabled by config\") so it stays visible. prompts-get is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how prompts-get counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. prompts-get is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "protocol": {
           "type": "object",
           "properties": {
@@ -1973,6 +2008,41 @@
                 null
               ],
               "description": "Override how refusal-quality counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. refusal-quality is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": null,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources-read": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Run resources-read. false reports it as n/a (\"disabled by config\") so it stays visible. resources-read is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+              "default": true,
+              "x-sealmark": {
+                "since": "0.3-draft",
+                "standardLocked": false,
+                "mergeable": false,
+                "secret": false,
+                "flagOnly": false
+              }
+            },
+            "severity": {
+              "enum": [
+                "critical",
+                "scored",
+                "advisory",
+                null
+              ],
+              "description": "Override how resources-read counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. resources-read is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
               "default": null,
               "x-sealmark": {
                 "since": "0.3-draft",
@@ -7015,6 +7085,41 @@
               },
               "additionalProperties": false
             },
+            "prompts-get": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run prompts-get. false reports it as n/a (\"disabled by config\") so it stays visible. prompts-get is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how prompts-get counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. prompts-get is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
             "protocol": {
               "type": "object",
               "properties": {
@@ -7134,6 +7239,41 @@
                     null
                   ],
                   "description": "Override how refusal-quality counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. refusal-quality is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": null,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "resources-read": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Run resources-read. false reports it as n/a (\"disabled by config\") so it stays visible. resources-read is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
+                  "default": true,
+                  "x-sealmark": {
+                    "since": "0.3-draft",
+                    "standardLocked": false,
+                    "mergeable": false,
+                    "secret": false,
+                    "flagOnly": false
+                  }
+                },
+                "severity": {
+                  "enum": [
+                    "critical",
+                    "scored",
+                    "advisory",
+                    null
+                  ],
+                  "description": "Override how resources-read counts: critical, scored or advisory. null keeps the check's own severity. advisory removes it from the score. resources-read is a candidate check, not part of the standard profile: changing this makes the run CUSTOM.",
                   "default": null,
                   "x-sealmark": {
                     "since": "0.3-draft",

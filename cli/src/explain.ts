@@ -172,6 +172,11 @@ export const REMEDIATION: Record<string, string> = {
     "Give every tool a description of its own: say what it does and when to use it in more words than its name, keep it under 1024 characters, and make sure no two tools share a description or have names that differ only by case or separators (get_user and getUser). This check is advisory and never changes a letter.",
   "param-descriptions":
     "Describe every parameter in the input schema: give it a type and a description that says what to send (format, units, an example), use enum for a closed set of values, and declare every name listed in required. This check is advisory and never changes a letter.",
+  // Round 9: resources and prompts.
+  "resources-read":
+    "Make every resource you list readable: resources/read on a listed URI should answer with its contents (at least one item), list each URI once, and answer a URI you do not have with an error (the spec uses -32002, resource not found) rather than an empty success. This check is advisory and never changes a letter.",
+  "prompts-get":
+    "Make every prompt you list fetchable: prompts/get should answer with at least one message, list each prompt and each argument name once, and answer an unknown prompt name or a missing required argument with an error (the spec uses -32602, invalid params) rather than a success. This check is advisory and never changes a letter.",
   // Round 7.
   "oauth-token-forgery":
     "Verify every token's signature with a key from the issuer you configured, and only with an algorithm you allow (for example RS256 only): refuse alg none in any spelling, an empty or wrong signature, a payload that no longer matches its signature, a key not in the issuer's key set, and HS256 tokens on an RSA key (never use the public key as an HMAC secret). Take keys from the configured JWKS URL only, never from a jku, x5u or kid in the token header, and never use kid as a file path or a query. If the check is inconclusive, the server did not trust the harness's issuer: set its issuer to {issuer}, its JWKS URL to {jwks} and its audience to {audience}.",

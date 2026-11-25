@@ -436,7 +436,7 @@ These are by design or not yet built. Every report lists the relevant ones under
 | `cli/src/classify.ts` | Tool classification and gating |
 | `cli/src/sandbox.ts`, `cli/src/observers/` | Sandbox, file observer, loopback listener, process observer, upstream stub (`upstream.ts`), server log (`log.ts`) |
 | `cli/src/seed.ts`, `cli/src/embedded.ts` | Seed database, roles, state reader, embedded Postgres |
-| `cli/src/packs/` | The packs (section 5.6); round 6: `scope.ts`, `sql-guard.ts` with `sql-guard-corpus.ts`, `upstream.ts`; `descriptions.ts`: the description lint, two advisory core checks over the `tools/list` listing |
+| `cli/src/packs/` | The packs (section 5.6); round 6: `scope.ts`, `sql-guard.ts` with `sql-guard-corpus.ts`, `upstream.ts`; `descriptions.ts`: the description lint, two advisory core checks over the `tools/list` listing; `extras.ts`: `resources-read` and `prompts-get`, two advisory core checks for resources and prompts |
 | `cli/src/probes.ts`, `cli/src/plugins.ts` | Custom probes and plugin packs |
 | `cli/src/grade.ts` | The grading function |
 | `cli/src/report/`, `cli/src/report.ts` | Renderers, sanitizing, redaction, baseline, exit codes |
