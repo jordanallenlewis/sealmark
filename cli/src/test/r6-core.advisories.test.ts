@@ -161,7 +161,7 @@ describe("instructions-hygiene (hand-built session)", () => {
 describe("runCore carries the advisory", () => {
   it("describe() lists the advisories with advisory: true and the four scored checks unchanged", () => {
     const docs = describeCore();
-    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["refusal-quality", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
+    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["refusal-quality", "instructions-hygiene", "tool-descriptions", "param-descriptions", "resources-read", "prompts-get"]);
     assert.deepEqual(docs.filter((d) => !d.advisory).map((d) => d.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo"]);
     for (const d of docs.filter((x) => x.advisory)) {
       assert.equal(d.pack, "core");
@@ -191,7 +191,7 @@ describe("instructions-hygiene on the toy server", { timeout: 120_000 }, () => {
     const s = await McpSession.open({ command: process.execPath, args: [TOY, "--mode", "unknown-tool"], env: {} }, { vars: {}, dsns: {} }, { cleanCwd: true });
     sessions.push(s);
     const out = await runCore({ session: s, canaries: [], seen: [], hangMs: 6000 });
-    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
+    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene", "tool-descriptions", "param-descriptions", "resources-read", "prompts-get"]);
     assert.equal(out[4].verdict, "fail");
     assert.equal(out[4].advisory, true);
     assert.equal(out[4].critical, false);

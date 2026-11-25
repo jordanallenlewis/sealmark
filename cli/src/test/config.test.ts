@@ -103,6 +103,8 @@ describe("schema table", () => {
       "instructions-hygiene",
       "tool-descriptions",
       "param-descriptions",
+      "resources-read",
+      "prompts-get",
       "scope-escape",
       "sql-guard-statements",
       "sql-guard-references",

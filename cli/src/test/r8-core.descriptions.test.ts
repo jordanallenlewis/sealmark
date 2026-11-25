@@ -241,8 +241,8 @@ const ctxFor = (tools: ToolInfo[], checks?: CoreCtx["checks"]): CoreCtx => ({ se
 describe("the description lint inside core", () => {
   it("a server with no tools: both n/a, after the five checks of before", async () => {
     const out = await runCore(ctxFor([]));
-    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
-    assert.deepEqual(out.slice(5).map((c) => c.verdict), ["na", "na"]);
+    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene", "tool-descriptions", "param-descriptions", "resources-read", "prompts-get"]);
+    assert.deepEqual(out.slice(5, 7).map((c) => c.verdict), ["na", "na"]);
   });
 
   it("never moves the core letter: the same checks with and without the lint grade the same", () => {

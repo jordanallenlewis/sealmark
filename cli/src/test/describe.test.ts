@@ -154,7 +154,7 @@ describe("describe --json", () => {
     assert.equal(wire.checks.find((c) => c.id === "secret-echo")!.severity, "critical");
     assert.equal(wire.checks.find((c) => c.id === "audit")!.severity, "advisory");
     for (const p of wire.packs) assert.deepEqual(p.checks, wire.checks.filter((c) => c.pack === p.id).map((c) => c.id));
-    assert.equal(wire.checks.length, 64, "45 through round 5, plus the 11 round 6 candidates, the 6 round 7 candidates and the 2 round 8 candidates");
+    assert.equal(wire.checks.length, 66, "45 through round 5, plus the 11 round 6 candidates, the 6 round 7 candidates, the 2 round 8 candidates and the 2 round 9 candidates");
     assert.equal(wire.packs.find((p) => p.id === "core")!.standard, true);
     assert.equal(wire.packs.find((p) => p.id === "exec")!.standard, false, "exec is opt-in");
     assert.ok(STANDARD_PACKS.every((id) => wire.packs.some((p) => p.id === id)));
@@ -174,6 +174,8 @@ describe("describe --json", () => {
       "instructions-hygiene",
       "tool-descriptions",
       "param-descriptions",
+      "resources-read",
+      "prompts-get",
       "db-privilege",
       "http-session-binding",
       "scope-escape",
@@ -308,7 +310,7 @@ describe("list-checks", () => {
     assert.match(text, /^protocol +core +scored +yes/m);
     assert.match(text, /LOCKED: every setting/);
     const json = JSON.parse(renderListChecks(listChecks({ pack: "core" }), { json: true })) as { checks: unknown[] };
-    assert.equal(json.checks.length, 8, "the four core checks, the two round 6 advisories and the two round 8 advisories");
+    assert.equal(json.checks.length, 10, "the four core checks, the two round 6 advisories, the two round 8 advisories and the two round 9 advisories");
     assert.equal(renderListChecks([]), "no checks\n");
   });
   it("marks opt-in packs and checks that are not shipped", () => {
