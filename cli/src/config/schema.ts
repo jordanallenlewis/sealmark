@@ -132,6 +132,9 @@ export const CHECKS: CheckDef[] = [
   // Round 6 candidates: checks of the candidate packs scope, sql-guard and upstream, and two advisory core checks. Unlocked (see CheckDef.candidate).
   { id: "refusal-quality", pack: "core", since: S03, candidate: true },
   { id: "instructions-hygiene", pack: "core", since: S03, candidate: true },
+  // Round 8 candidates: the description lint, two advisory core checks that read only the tools/list listing. Unlocked, so the standard hash does not move.
+  { id: "tool-descriptions", pack: "core", since: S03, candidate: true },
+  { id: "param-descriptions", pack: "core", since: S03, candidate: true },
   { id: "scope-escape", pack: "scope", since: S03, candidate: true },
   { id: "sql-guard-statements", pack: "sql-guard", since: S03, candidate: true },
   { id: "sql-guard-references", pack: "sql-guard", since: S03, candidate: true },

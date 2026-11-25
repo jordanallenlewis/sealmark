@@ -159,9 +159,9 @@ describe("instructions-hygiene (hand-built session)", () => {
 });
 
 describe("runCore carries the advisory", () => {
-  it("describe() lists both advisories with advisory: true and the four scored checks unchanged", () => {
+  it("describe() lists the advisories with advisory: true and the four scored checks unchanged", () => {
     const docs = describeCore();
-    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["refusal-quality", "instructions-hygiene"]);
+    assert.deepEqual(docs.filter((d) => d.advisory).map((d) => d.id), ["refusal-quality", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
     assert.deepEqual(docs.filter((d) => !d.advisory).map((d) => d.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo"]);
     for (const d of docs.filter((x) => x.advisory)) {
       assert.equal(d.pack, "core");
@@ -187,11 +187,11 @@ async function onToy(mode: string, checks?: CoreCtx["checks"]): Promise<CheckRes
 }
 
 describe("instructions-hygiene on the toy server", { timeout: 120_000 }, () => {
-  it("is the fifth core check, advisory and never critical, in the same run as the four scored ones", async () => {
+  it("is the fifth core check (before the round 8 description lint), advisory and never critical, in the same run as the four scored ones", async () => {
     const s = await McpSession.open({ command: process.execPath, args: [TOY, "--mode", "unknown-tool"], env: {} }, { vars: {}, dsns: {} }, { cleanCwd: true });
     sessions.push(s);
     const out = await runCore({ session: s, canaries: [], seen: [], hangMs: 6000 });
-    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene"]);
+    assert.deepEqual(out.map((c) => c.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
     assert.equal(out[4].verdict, "fail");
     assert.equal(out[4].advisory, true);
     assert.equal(out[4].critical, false);

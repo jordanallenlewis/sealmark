@@ -167,6 +167,11 @@ export const REMEDIATION: Record<string, string> = {
     "Make every refusal say what to do next: name the tool or the identifiers that are allowed (for example call list_tables), say whether retrying can help, and avoid a bare forbidden. This check is advisory and never changes a letter; checks.refusal-quality.patterns sets the words that count as routing.",
   "instructions-hygiene":
     "Keep the server's instructions in step with its tools: remove names of tools the server does not offer and any text left over from another product or prompt (what checks.instructions-hygiene.deny matches). This check is advisory.",
+  // Round 8: the description lint.
+  "tool-descriptions":
+    "Give every tool a description of its own: say what it does and when to use it in more words than its name, keep it under 1024 characters, and make sure no two tools share a description or have names that differ only by case or separators (get_user and getUser). This check is advisory and never changes a letter.",
+  "param-descriptions":
+    "Describe every parameter in the input schema: give it a type and a description that says what to send (format, units, an example), use enum for a closed set of values, and declare every name listed in required. This check is advisory and never changes a letter.",
   // Round 7.
   "oauth-token-forgery":
     "Verify every token's signature with a key from the issuer you configured, and only with an algorithm you allow (for example RS256 only): refuse alg none in any spelling, an empty or wrong signature, a payload that no longer matches its signature, a key not in the issuer's key set, and HS256 tokens on an RSA key (never use the public key as an HMAC secret). Take keys from the configured JWKS URL only, never from a jku, x5u or kid in the token header, and never use kid as a file path or a query. If the check is inconclusive, the server did not trust the harness's issuer: set its issuer to {issuer}, its JWKS URL to {jwks} and its audience to {audience}.",

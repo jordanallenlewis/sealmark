@@ -101,6 +101,8 @@ describe("schema table", () => {
       "db-privilege",
       "refusal-quality",
       "instructions-hygiene",
+      "tool-descriptions",
+      "param-descriptions",
       "scope-escape",
       "sql-guard-statements",
       "sql-guard-references",

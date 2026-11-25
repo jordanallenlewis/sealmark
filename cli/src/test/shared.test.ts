@@ -245,7 +245,7 @@ describe("coverage notes and check docs", () => {
   it("describe(): every core and db check id is documented once, cap-timeout is retired and recorded under replaces", () => {
     const core = describeCore();
     const db = describeDb();
-    assert.deepEqual(core.map((d) => d.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "refusal-quality", "instructions-hygiene"]);
+    assert.deepEqual(core.map((d) => d.id), ["protocol", "tool-poisoning", "robust-input", "secret-echo", "refusal-quality", "instructions-hygiene", "tool-descriptions", "param-descriptions"]);
     assert.deepEqual(db.map((d) => d.id), ["read-only", "write-gate", "rls", "mutating-sql", "pii", "pii-masked", "db-rowcap", "db-timeout", "audit", "db-privilege"]);
     const ids = [...core, ...db].map((d) => d.id);
     assert.equal(new Set(ids).size, ids.length);

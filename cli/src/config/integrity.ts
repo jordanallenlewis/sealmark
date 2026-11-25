@@ -37,6 +37,9 @@ export const CANDIDATE_CHECKS = [
   "oauth-scope",
   "upstream-token-passthrough",
   "http-session-binding",
+  // Round 8: the description lint, two advisory core checks over the tools/list listing.
+  "tool-descriptions",
+  "param-descriptions",
 ] as const;
 
 /** The only keys a replayed report may carry: every locked leaf, `packs`, and the custom-run record (`custom_checks`, `plugins`; see checkReplay). */

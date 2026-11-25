@@ -10,7 +10,7 @@ import { directCtx, fsConfig } from "./packctx.js";
 
 /** Snapshot of `sealmark describe` ids, in registry order (DC1: the registry reads each pack's own describe()). */
 const DESCRIBE_IDS = [
-  "core/protocol", "core/tool-poisoning", "core/robust-input", "core/secret-echo", "core/refusal-quality", "core/instructions-hygiene",
+  "core/protocol", "core/tool-poisoning", "core/robust-input", "core/secret-echo", "core/refusal-quality", "core/instructions-hygiene", "core/tool-descriptions", "core/param-descriptions",
   "db/read-only", "db/write-gate", "db/rls", "db/mutating-sql", "db/pii", "db/pii-masked", "db/db-rowcap", "db/db-timeout", "db/audit", "db/db-privilege",
   "http/http-origin", "http/http-auth", "http/http-protocol-version", "http/http-session", "http/http-session-binding", "http/http-cors", "http/http-bind", "http/http-tls",
   "fs/fs-read-escape", "fs/fs-write-escape", "fs/fs-link-escape", "fs/fs-size-cap",
@@ -26,7 +26,7 @@ const DESCRIBE_IDS = [
 ];
 
 describe("dead-code package", () => {
-  it("describeAll() still lists the same 62 checks in the same order (45 through round 5, 11 from round 6, 6 from round 7)", () => {
+  it("describeAll() still lists the same 64 checks in the same order (45 through round 5, 11 from round 6, 6 from round 7, 2 from round 8)", () => {
     assert.deepEqual(describeAll().map((d) => `${d.pack}/${d.id}`), DESCRIBE_IDS);
   });
 
