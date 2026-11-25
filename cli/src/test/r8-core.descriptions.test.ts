@@ -3,13 +3,14 @@ import { describe, it } from "node:test";
 import { gradePack } from "../grade.js";
 import type { McpSession, ToolInfo } from "../mcp.js";
 import { applyChecksConfig, describe as describeCore, protocolFailure, runCore, type CoreCtx } from "../packs/core.js";
-import { MAX_DESCRIPTION, MAX_FINDINGS, paramDescriptions, toolDescriptions, words } from "../packs/descriptions.js";
+import { MAX_DESCRIPTION, MAX_FINDINGS, MAX_NAMES, paramDescriptions, toolDescriptions, words } from "../packs/descriptions.js";
 import type { CheckResult } from "../types.js";
 
 // Round 8: the description lint. Two advisory candidate checks in core that read only the tools/list listing.
 
-const t = (name: string, description: string | undefined, properties: Record<string, unknown> = {}, required?: unknown[]): ToolInfo =>
-  ({ name, ...(description === undefined ? {} : { description }), inputSchema: { type: "object", properties, ...(required ? { required } : {}) } }) as ToolInfo;
+const t = (name: string, description: string | undefined, properties: Record<string, unknown> = {}, required?: unknown[], extra: Record<string, unknown> = {}): ToolInfo =>
+  ({ name, ...(description === undefined ? {} : { description }), inputSchema: { type: "object", properties, ...(required ? { required } : {}), ...extra } }) as ToolInfo;
+const CLOSED = { additionalProperties: false };
 const str = (description?: string) => ({ type: "string", ...(description ? { description } : {}) });
 const codes = (c: CheckResult) => c.evidence.map((e) => e.code);
 
@@ -18,6 +19,11 @@ describe("words", () => {
     assert.deepEqual(words("getUserById"), ["get", "user", "by", "id"]);
     assert.deepEqual(words("get_user-by.id"), ["get", "user", "by", "id"]);
     assert.deepEqual(words("Get user, by ID."), ["get", "user", "by", "id"]);
+  });
+  it("keeps letters and digits of every script, and drops symbols and emoji", () => {
+    assert.deepEqual(words("Поиск файлов по имени"), ["поиск", "файлов", "по", "имени"]);
+    assert.deepEqual(words("搜索文件"), ["搜索文件"]);
+    assert.deepEqual(words("🔥 → ✨"), []);
   });
 });
 
@@ -52,15 +58,42 @@ describe("tool-descriptions", () => {
     assert.equal(toolDescriptions([t("x", "0123456789")]).verdict, "pass");
   });
 
-  it("no tool with a usable description: fail", () => {
+  it("no tool with a usable description (missing, short or only restating the name): fail", () => {
     assert.equal(toolDescriptions([t("a", undefined), t("b", "")]).verdict, "fail");
+    assert.equal(toolDescriptions([t("list_all_tables", "List all tables"), t("b", undefined)]).verdict, "fail");
+    assert.equal(toolDescriptions([t("list_all_tables", "List all tables"), t("b", "Something useful here")]).verdict, "part");
+  });
+
+  it("descriptions in other scripts are compared by their own words, never lumped together", () => {
+    const distinct = toolDescriptions([t("search", "按名称搜索文件和目录"), t("fetch", "读取一个文件的全部内容"), t("del", "Удаляет файл по указанному пути")]);
+    assert.equal(distinct.verdict, "pass", distinct.summary);
+    const same = toolDescriptions([t("search", "按名称搜索文件和目录"), t("find", "按名称搜索文件和目录。")]);
+    assert.equal(same.verdict, "fail");
+    assert.deepEqual(codes(same), ["descriptions.duplicate"]);
+  });
+
+  it("descriptions with no letter or digit (symbols, emoji) are not read as shared", () => {
+    const c = toolDescriptions([t("a", "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"), t("b", "✨✨✨✨✨✨✨✨✨✨✨✨")]);
+    assert.equal(c.verdict, "pass", c.summary);
+  });
+
+  it("an exact duplicate name with the same description is protocol's error, not a shared description", () => {
+    assert.equal(toolDescriptions([t("dup", "Does the same thing"), t("dup", "Does the same thing")]).verdict, "pass");
+  });
+
+  it(`one evidence line lists at most ${MAX_NAMES} names, then counts the rest`, () => {
+    const c = toolDescriptions(Array.from({ length: MAX_NAMES + 5 }, (_, i) => t(`tool_${i}`, "The very same description")));
+    assert.equal(c.evidence.length, 1);
+    assert.match(c.evidence[0].outcome, /^15 tools share one description: tool_0, .*, tool_9 and 5 more$/);
+    const p = paramDescriptions([t("x", "Many bare parameters", Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`p${i}`, { type: "string" }])))]);
+    assert.match(p.evidence[0].outcome, /^x: 30 of 30 parameter\(s\) not described: p0, .*, p9 and 20 more$/);
   });
 
   it("restates the name: part", () => {
     const c = toolDescriptions([t("get_weather_report", "Get weather report."), t("other", "Something else entirely")]);
     assert.equal(c.verdict, "part");
     assert.deepEqual(codes(c), ["descriptions.restates-name"]);
-    assert.equal(toolDescriptions([t("getWeatherReport", "get-weather-report")]).verdict, "part");
+    assert.equal(toolDescriptions([t("getWeatherReport", "get-weather-report"), t("other", "Something else entirely")]).verdict, "part");
   });
 
   it(`over ${MAX_DESCRIPTION} characters: part; exactly ${MAX_DESCRIPTION} passes`, () => {
@@ -166,18 +199,28 @@ describe("param-descriptions", () => {
     assert.equal(c.verdict, "fail");
   });
 
-  it("a required name the properties do not declare: fail, even when every declared parameter is clean", () => {
-    const c = paramDescriptions([t("x", "Needs a ghost", { a: str("The real one") }, ["a", "ghost", "ghost", 7])]);
+  it("a required name a closed schema does not declare: fail, even when every declared parameter is clean", () => {
+    const c = paramDescriptions([t("x", "Needs a ghost", { a: str("The real one") }, ["a", "ghost", "ghost", 7], CLOSED)]);
     assert.equal(c.verdict, "fail");
     assert.deepEqual(codes(c), ["params.required-undeclared"]);
     assert.match(c.evidence[0].outcome, /required but not declared in properties: ghost$/);
     assert.equal(c.summary, "1 of 1 parameter(s) are described and typed, 1 required name(s) not declared");
     // With no properties at all the undeclared name still counts: the check is not n/a.
-    assert.equal(paramDescriptions([t("y", "Only required", {}, ["q"])]).verdict, "fail");
+    assert.equal(paramDescriptions([t("y", "Only required", {}, ["q"], CLOSED)]).verdict, "fail");
+  });
+
+  it("an open schema, or one with a composition or reference at the top level, may declare the name elsewhere: not counted", () => {
+    const open = paramDescriptions([t("x", "Needs a ghost", { a: str("The real one") }, ["ghost"])]);
+    assert.equal(open.verdict, "pass", open.summary);
+    for (const k of ["allOf", "anyOf", "oneOf", "$ref", "patternProperties", "if"]) {
+      const c = paramDescriptions([t("x", "Needs a ghost", { a: str("The real one") }, ["ghost"], { ...CLOSED, [k]: k === "$ref" ? "#/$defs/x" : k === "patternProperties" || k === "if" ? {} : [{ properties: { ghost: { type: "string" } } }] })]);
+      assert.equal(c.verdict, "pass", k);
+    }
+    assert.equal(paramDescriptions([t("y", "Only required", {}, ["q"])]).verdict, "na");
   });
 
   it("an inherited name (toString) in required is not read as declared", () => {
-    assert.equal(paramDescriptions([t("x", "Needs toString", { a: str("The real one") }, ["toString"])]).verdict, "fail");
+    assert.equal(paramDescriptions([t("x", "Needs toString", { a: str("The real one") }, ["toString"], CLOSED)]).verdict, "fail");
   });
 
   it(`caps evidence at ${MAX_FINDINGS} lines plus one count line`, () => {

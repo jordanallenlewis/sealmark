@@ -21,6 +21,9 @@ export const CANDIDATE_CHECKS = [
   // Round 6: the two core advisories and the checks of the candidate packs scope, sql-guard and upstream.
   "refusal-quality",
   "instructions-hygiene",
+  // Round 8: the description lint, two advisory core checks over the tools/list listing (same order as CHECKS in schema.ts).
+  "tool-descriptions",
+  "param-descriptions",
   "scope-escape",
   "sql-guard-statements",
   "sql-guard-references",
@@ -37,9 +40,6 @@ export const CANDIDATE_CHECKS = [
   "oauth-scope",
   "upstream-token-passthrough",
   "http-session-binding",
-  // Round 8: the description lint, two advisory core checks over the tools/list listing.
-  "tool-descriptions",
-  "param-descriptions",
 ] as const;
 
 /** The only keys a replayed report may carry: every locked leaf, `packs`, and the custom-run record (`custom_checks`, `plugins`; see checkReplay). */

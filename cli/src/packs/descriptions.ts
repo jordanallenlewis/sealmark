@@ -16,18 +16,23 @@ export const MIN_DESCRIPTION = 10;
 export const MAX_DESCRIPTION = 1024;
 /** Evidence lines per check; the rest are counted in one closing line. */
 export const MAX_FINDINGS = 25;
+/** Names listed in one evidence line; the rest are counted. */
+export const MAX_NAMES = 10;
 /** param-descriptions: pass when at least this share of parameters is described and typed, part down to PART_SHARE, fail below. */
 export const PASS_SHARE = 0.9;
 export const PART_SHARE = 0.5;
 
-/** Lower-case words of a name or a sentence: camelCase and snake_case split, punctuation dropped. */
+/** Lower-case words of a name or a sentence in any script: camelCase and snake_case split, punctuation and symbols dropped. */
 export const words = (s: string): string[] =>
-  s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  s.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 const sameWords = (a: string, b: string): boolean => words(a).join(" ") === words(b).join(" ");
 /** Two names a model cannot tell apart: equal once case and the separators _ - . and spaces are dropped. */
 const nameKey = (s: string): string => s.toLowerCase().replace(/[-_.\s]+/g, "");
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const label = (s: string): string => brief(s, 80);
+/** At most MAX_NAMES names, each cut to 80 characters, then a count, so one evidence line stays short whatever the listing holds. */
+const nameList = (names: readonly string[]): string =>
+  names.slice(0, MAX_NAMES).map(label).join(", ") + (names.length > MAX_NAMES ? ` and ${names.length - MAX_NAMES} more` : "");
 
 type Done = (r: Pick<CheckResult, "verdict" | "summary" | "evidence">) => CheckResult;
 
@@ -48,7 +53,7 @@ function capped(found: Evidence[], probe: string): Evidence[] {
 /**
  * `tool-descriptions` (advisory candidate). Per tool: a description is missing or under MIN_DESCRIPTION characters; it only restates the
  * tool's name; it is longer than MAX_DESCRIPTION characters. Across tools: two tools share one description (same words), or two names
- * differ only by case or separators. fail when two tools cannot be told apart or no tool has a usable description; part for any other
+ * differ only by case or separators. fail when two tools cannot be told apart or no tool has a usable description (missing, short or restating); part for any other
  * finding; pass with none; n/a with no tools. Exact duplicate names are `protocol`'s (a schema error), not counted again here.
  */
 export function toolDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig): CheckResult {
@@ -59,7 +64,8 @@ export function toolDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig):
   let missing = 0;
   let restated = 0;
   let long = 0;
-  const byText = new Map<string, string[]>();
+  // Distinct names per description: an exact duplicate name is protocol's schema error, not a second tool sharing the text.
+  const byText = new Map<string, Set<string>>();
   for (const t of tools) {
     const name = String(t.name);
     const text = typeof t.description === "string" ? t.description.trim() : "";
@@ -76,14 +82,15 @@ export function toolDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig):
       long++;
       found.push({ probe, outcome: `${label(name)}: the description is ${text.length} characters, over ${MAX_DESCRIPTION}`, verifiedBy: "static", tool: name, code: "descriptions.too-long" });
     }
+    // A description with no letter or digit (only symbols or emoji) has no words to compare: it is not grouped with others.
     const key = words(text).join(" ");
-    byText.set(key, [...(byText.get(key) ?? []), name]);
+    if (key) byText.set(key, (byText.get(key) ?? new Set()).add(name));
   }
   let shared = 0;
   for (const names of byText.values()) {
-    if (names.length < 2) continue;
+    if (names.size < 2) continue;
     shared++;
-    found.push({ probe, outcome: `${names.length} tools share one description: ${names.map(label).join(", ")}`, verifiedBy: "static", code: "descriptions.duplicate" });
+    found.push({ probe, outcome: `${names.size} tools share one description: ${nameList([...names])}`, verifiedBy: "static", code: "descriptions.duplicate" });
   }
   const byName = new Map<string, Set<string>>();
   for (const t of tools) {
@@ -94,7 +101,7 @@ export function toolDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig):
   for (const names of byName.values()) {
     if (names.size < 2) continue;
     collide++;
-    found.push({ probe, outcome: `tool names differ only by case or separators: ${[...names].map(label).join(", ")}`, verifiedBy: "static", code: "descriptions.name-collision" });
+    found.push({ probe, outcome: `tool names differ only by case or separators: ${nameList([...names])}`, verifiedBy: "static", code: "descriptions.name-collision" });
   }
   if (!found.length) {
     return done({ verdict: "pass", summary: `${tools.length} tool description(s) read: each is present, says more than the tool's name, is at most ${MAX_DESCRIPTION} characters and differs from the others`, evidence: [{ probe, outcome: `${tools.length} tool(s) read`, verifiedBy: "static" }] });
@@ -106,9 +113,13 @@ export function toolDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig):
     shared ? `${shared} description(s) shared by several tools` : "",
     collide ? `${collide} set(s) of names that differ only by case or separators` : "",
   ].filter(Boolean);
-  const verdict = shared || collide || missing === tools.length ? "fail" : "part";
+  // No usable description: every tool's is missing, too short, or only restates its name.
+  const verdict = shared || collide || missing + restated === tools.length ? "fail" : "part";
   return done({ verdict, summary: parts.join(", "), evidence: capped(found, probe) });
 }
+
+/** Top-level keywords that can declare or allow a property outside `properties`. */
+const OPEN_KEYS = ["allOf", "anyOf", "oneOf", "$ref", "$dynamicRef", "patternProperties", "if", "then", "else", "dependentSchemas", "unevaluatedProperties"];
 
 /** A parameter schema states a type: `type`, a closed value set, a composition or a reference, or the shape of an object or array. */
 function typed(s: Record<string, unknown>): boolean {
@@ -131,7 +142,7 @@ function described(name: string, s: Record<string, unknown>): boolean {
 /**
  * `param-descriptions` (advisory candidate). Every top-level parameter in each tool's inputSchema: it is described (a description or
  * title that says more than its name) unless it documents itself (enum, const, boolean), and it states a type. A name in `required`
- * that `properties` does not declare is a contract a client cannot meet. pass when at least PASS_SHARE of parameters are clean and no
+ * that `properties` does not declare, in a closed schema, is a contract a client cannot meet. pass when at least PASS_SHARE of parameters are clean and no
  * required name is undeclared; part down to PART_SHARE; fail below it or with an undeclared required name; n/a when no tool takes a parameter.
  */
 export function paramDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig): CheckResult {
@@ -157,12 +168,15 @@ export function paramDescriptions(tools: readonly ToolInfo[], cfg?: CheckConfig)
       if (!okText) bare.push(p);
       if (!okType) untyped.push(p);
     }
-    const missing = [...new Set(required.filter((r) => !Object.hasOwn(props, r)))];
+    // Only a closed schema makes an undeclared required name a contract no client can meet: with additionalProperties not false, or a
+    // composition or reference at the top level, the name may be declared or allowed elsewhere, so it is not counted.
+    const closed = schema.additionalProperties === false && !OPEN_KEYS.some((k) => k in schema);
+    const missing = closed ? [...new Set(required.filter((r) => !Object.hasOwn(props, r)))] : [];
     undeclared += missing.length;
     const n = Object.keys(props).length;
-    if (bare.length) found.push({ probe, outcome: `${label(name)}: ${bare.length} of ${n} parameter(s) not described: ${bare.map(label).join(", ")}`, verifiedBy: "static", tool: name, code: "params.undocumented" });
-    if (untyped.length) found.push({ probe, outcome: `${label(name)}: ${untyped.length} of ${n} parameter(s) state no type: ${untyped.map(label).join(", ")}`, verifiedBy: "static", tool: name, code: "params.untyped" });
-    if (missing.length) found.push({ probe, outcome: `${label(name)}: required but not declared in properties: ${missing.map(label).join(", ")}`, verifiedBy: "static", tool: name, code: "params.required-undeclared" });
+    if (bare.length) found.push({ probe, outcome: `${label(name)}: ${bare.length} of ${n} parameter(s) not described: ${nameList(bare)}`, verifiedBy: "static", tool: name, code: "params.undocumented" });
+    if (untyped.length) found.push({ probe, outcome: `${label(name)}: ${untyped.length} of ${n} parameter(s) state no type: ${nameList(untyped)}`, verifiedBy: "static", tool: name, code: "params.untyped" });
+    if (missing.length) found.push({ probe, outcome: `${label(name)}: required but not declared in properties: ${nameList(missing)}`, verifiedBy: "static", tool: name, code: "params.required-undeclared" });
   }
   if (!total && !undeclared) return done({ verdict: "na", summary: tools.length ? "no tool takes a parameter" : "the server declares no tools", evidence: [] });
   const share = total ? clean / total : 0;
@@ -189,7 +203,7 @@ export function describeDescriptions(common: Omit<CheckDoc, "id" | "label" | "cr
         { id: "too-long", text: `a tool's description is over ${MAX_DESCRIPTION} characters (it costs context on every request that lists the tools)`, core: false, kind: "static" },
         { id: "duplicate", text: "two or more tools have a description with the same words", core: false, kind: "static" },
         { id: "name-collision", text: "two or more tool names are equal once case and the separators _ - . are dropped (get_user, getUser)", core: false, kind: "static" },
-        { id: "verdict", text: "fail when two tools cannot be told apart (a shared description or colliding names) or no tool has a usable description; part for any other finding; pass with none; n/a with no tools", core: false, kind: "advisory" },
+        { id: "verdict", text: "fail when two tools cannot be told apart (a shared description or colliding names) or no tool has a usable description (every one missing, under 10 characters or only restating the name); part for any other finding; pass with none; n/a with no tools", core: false, kind: "advisory" },
       ],
       falsePositive: "A short description can be enough for an obvious tool, and two tools can share a description on purpose (aliases); the check is advisory and never moves a letter.",
       falseNegative: "Only the words are read, never their meaning: a description that is present, distinct and wrong passes. Exact duplicate names are protocol's schema error and are not counted again here.",
@@ -207,7 +221,7 @@ export function describeDescriptions(common: Omit<CheckDoc, "id" | "label" | "cr
       probes: [
         { id: "undocumented", text: "a top-level parameter has no description or title that says more than its name, and no enum, const or boolean type that documents it", core: false, kind: "static" },
         { id: "untyped", text: "a top-level parameter states no type (type, enum, const, anyOf, oneOf, allOf, $ref, properties or items)", core: false, kind: "static" },
-        { id: "required-undeclared", text: "a name in the input schema's required list that its properties do not declare", core: false, kind: "static" },
+        { id: "required-undeclared", text: "a name in the input schema's required list that its properties do not declare, in a closed schema (additionalProperties: false, and no allOf, anyOf, oneOf, $ref, patternProperties or conditional at the top level)", core: false, kind: "static" },
         { id: "verdict", text: `pass when ${PASS_SHARE * 100} % or more of the parameters are described and typed and no required name is undeclared; part at ${PART_SHARE * 100} %; fail below, or with an undeclared required name; n/a when no tool takes a parameter`, core: false, kind: "advisory" },
       ],
       falsePositive: "A well-named parameter (path, url) can be clear without a description; the check is advisory and never moves a letter.",

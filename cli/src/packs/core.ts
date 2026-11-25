@@ -782,7 +782,7 @@ export function protocolFailure(message: string): CheckResult[] {
     { id: "tool-poisoning", pack: "core", label: "No tool-poisoning indicators in tool metadata", critical: true, scope: "server (what it declares, not what it does)", verdict: "inconclusive", summary: reason, evidence: [] },
     { id: "robust-input", pack: "core", label: "Survives malformed tool input", critical: false, scope: "server", verdict: "inconclusive", summary: reason, evidence: [] },
     { id: "secret-echo", pack: "core", label: "No environment secret echoed in responses", critical: true, scope: "server", verdict: "inconclusive", summary: reason, evidence: [] },
-    // The same five core checks as every other run (refusal-quality is added by the harness after the packs).
+    // The same core checks as every other run (refusal-quality is added by the harness after the packs).
     { id: INSTRUCTIONS_HYGIENE_META.id, pack: "core", label: INSTRUCTIONS_HYGIENE_META.label, critical: false, advisory: true, scope: INSTRUCTIONS_HYGIENE_META.scope, verdict: "inconclusive", summary: reason, evidence: [] },
     // The description lint reads the listing, which could not be parsed.
     ...[TOOL_DESCRIPTIONS_META, PARAM_DESCRIPTIONS_META].map((m): CheckResult => ({ id: m.id, pack: "core", label: m.label, critical: false, advisory: true, scope: m.scope, verdict: "inconclusive", summary: reason, evidence: [] })),
